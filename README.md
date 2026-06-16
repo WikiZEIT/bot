@@ -88,7 +88,6 @@ them.
 
 ## License
 
-WikiZEIT Bot — pywikibot-based bot for the Polish Wikipedia.
 Copyright (C) 2026 [Jakub T. Jankiewicz](https://jakub.jankiewicz.org/)
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU
