@@ -178,7 +178,7 @@ def is_eligible(name, info):
     return True
 
 
-MENTEE_TEMPLATE = """=== [[User:<user>|<user>]] ([[User talk:<user>|dyskusja]] <small>•</small> [[Specjalna:Wkład/<user>|edycje]] <small>•</small> [[Specjalna:Rejestr/<user>|rejestr]]) ===
+MENTEE_TEMPLATE = """=== <span class="plainlinks">[https://pl.wikipedia.org/wiki/User:<user> <user>]</span> ([[User talk:<user>|dyskusja]] <small>•</small> [[Specjalna:Wkład/<user>|edycje]] <small>•</small> [[Specjalna:Rejestr/<user>|rejestr]]) ===
 <div>
 {{Specjalna:Wkład/<user>|limit=5}}
 </div>"""
