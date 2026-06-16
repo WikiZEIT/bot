@@ -59,6 +59,7 @@ Configurable constants at the top of `bot.py`:
 | `DEBUG` | When `True`, the bot writes each page's output to `DEBUG_DIR/<n>` files instead of saving to the wiki. Flip to `False` for production. |
 | `DEBUG_DIR` | Output directory for the dry-run (default `pages`). |
 | `MENTEES_PER_PAGE` | Pagination size for `podopieczni`. |
+| `PAGE_INDEX_WIDTH` | Zero-padding width for subpage indices and debug filenames (e.g. `5` → `00001`, `00010`). |
 | `EXCLUDED_GROUPS` | User groups filtered out of the mentee list (default `{'editor', 'sysop'}`). |
 
 Then:
