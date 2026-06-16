@@ -60,6 +60,8 @@ Configurable constants at the top of `bot.py`:
 | `DEBUG_DIR` | Output directory for the dry-run (default `pages`). |
 | `MENTEES_PER_PAGE` | Pagination size for `podopieczni`. |
 | `PAGE_INDEX_WIDTH` | Zero-padding width for subpage indices and debug filenames (e.g. `5` → `00001`, `00010`). |
+| `USE_SQL` | When `True`, fetch user info from the Wikimedia SQL replica (`replica.my.cnf`) instead of the API and sort mentees by their last-edit timestamp. Only works on Toolforge. Leave `False` for local testing. |
+| `LAST_EDIT_CUTOFF_DAYS` | In SQL mode, drop mentees whose last edit is older than this many days. |
 | `EXCLUDED_GROUPS` | User groups filtered out of the mentee list (default `{'editor', 'sysop'}`). |
 
 Then:

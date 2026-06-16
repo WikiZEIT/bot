@@ -18,11 +18,20 @@
 
 import os
 import re
+from datetime import datetime, timedelta, timezone
+
 import pywikibot
 from pywikibot.data import api
 
 DEBUG = False
 DEBUG_DIR = 'pages'
+
+USE_SQL = True
+LAST_EDIT_CUTOFF_DAYS = 365
+
+REPLICA_HOST = 'plwiki.analytics.db.svc.wikimedia.cloud'
+REPLICA_DB = 'plwiki_p'
+REPLICA_CNF = os.path.expanduser('~/replica.my.cnf')
 
 MENTEES_PER_PAGE = 400
 PAGE_INDEX_WIDTH = 5
@@ -75,8 +84,86 @@ def fetch_user_info(site, names):
                 'editcount': u.get('editcount', 0),
                 'blocked': 'blockid' in u,
                 'groups': set(u.get('groups', [])),
+                'last_edit': None,
             }
     return info
+
+
+def fetch_user_info_sql(names):
+    if not names:
+        return {}
+
+    import pymysql
+    import pymysql.cursors
+
+    db_names = [n.replace(' ', '_').encode('utf-8') for n in names]
+    placeholders = ', '.join(['%s'] * len(db_names))
+
+    info = {}
+    conn = pymysql.connect(
+        read_default_file=REPLICA_CNF,
+        host=REPLICA_HOST,
+        database=REPLICA_DB,
+        charset='utf8mb4',
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(f"""
+                SELECT
+                    u.user_id,
+                    u.user_name,
+                    u.user_editcount,
+                    EXISTS(SELECT 1 FROM block bl
+                           JOIN block_target bt ON bt.bt_id = bl.bl_target
+                           WHERE bt.bt_user = u.user_id) AS blocked,
+                    (SELECT GROUP_CONCAT(ug_group SEPARATOR ',')
+                     FROM user_groups WHERE ug_user = u.user_id) AS groups_cat
+                FROM user u
+                WHERE u.user_name IN ({placeholders})
+            """, db_names)
+
+            user_ids = {}
+            for row in cursor.fetchall():
+                name = row['user_name'].decode('utf-8').replace('_', ' ')
+                groups_cat = row['groups_cat']
+                groups_str = groups_cat.decode('utf-8') if groups_cat else ''
+                info[name] = {
+                    'editcount': row['user_editcount'] or 0,
+                    'blocked': bool(row['blocked']),
+                    'groups': set(groups_str.split(',')) if groups_str else set(),
+                    'last_edit': None,
+                }
+                user_ids[row['user_id']] = name
+
+            if user_ids:
+                id_placeholders = ', '.join(['%s'] * len(user_ids))
+                cursor.execute(f"""
+                    SELECT a.actor_user AS user_id, MAX(r.rev_timestamp) AS last_edit
+                    FROM actor a
+                    JOIN revision_userindex r ON r.rev_actor = a.actor_id
+                    WHERE a.actor_user IN ({id_placeholders})
+                    GROUP BY a.actor_user
+                """, list(user_ids.keys()))
+
+                for row in cursor.fetchall():
+                    name = user_ids.get(row['user_id'])
+                    last_edit = row['last_edit']
+                    if not name or last_edit is None:
+                        continue
+                    info[name]['last_edit'] = (
+                        last_edit.decode('utf-8') if isinstance(last_edit, bytes) else last_edit
+                    )
+    finally:
+        conn.close()
+
+    return info
+
+
+def get_user_info(site, names):
+    if USE_SQL:
+        return fetch_user_info_sql(names)
+    return fetch_user_info(site, names)
 
 
 EXCLUDED_GROUPS = {'editor', 'sysop'}
@@ -140,9 +227,17 @@ def get_menties(site, mentor):
     if not mentees:
         raise InvalidDataError("brak podopiecznych")
 
-    info = fetch_user_info(site, [m['name'] for m in mentees])
+    info = get_user_info(site, [m['name'] for m in mentees])
     mentees = [m for m in mentees if is_eligible(m['name'], info)]
-    mentees.sort(key=lambda m: info.get(m['name'], {}).get('editcount', 0), reverse=True)
+
+    if USE_SQL:
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(days=LAST_EDIT_CUTOFF_DAYS)).strftime('%Y%m%d%H%M%S')
+        mentees = [m for m in mentees
+                   if (info.get(m['name'], {}).get('last_edit') or '') >= cutoff]
+        mentees.sort(key=lambda m: info[m['name']]['last_edit'], reverse=True)
+    else:
+        mentees.sort(key=lambda m: info.get(m['name'], {}).get('editcount', 0), reverse=True)
 
     chunks = [mentees[i:i + MENTEES_PER_PAGE] for i in range(0, len(mentees), MENTEES_PER_PAGE)]
     if not chunks:
