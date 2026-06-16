@@ -153,6 +153,7 @@ def get_menties(site, mentor):
 
 def action_podopieczni(template, akcja, site, params, page):
     mentor = params.get('user')
+    chunks = []
     if not mentor:
         result = "brak parametru: user"
     else:
@@ -169,7 +170,10 @@ def action_podopieczni(template, akcja, site, params, page):
 
     parent_title = page.title()
     for index, batch in enumerate(chunks[1:], start=2):
-        save_subpage(site, parent_title, index, batch, mentor)
+        try:
+            save_subpage(site, parent_title, index, batch, mentor)
+        except Exception as exc:
+            pywikibot.error(f"Błąd przy podstronie {parent_title}/{format_index(index)}: {exc}")
 
 
 ACTIONS = {
