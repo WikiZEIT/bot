@@ -33,7 +33,7 @@ REPLICA_HOST = 'plwiki.analytics.db.svc.wikimedia.cloud'
 REPLICA_DB = 'plwiki_p'
 REPLICA_CNF = os.path.expanduser('~/replica.my.cnf')
 
-MENTEES_PER_PAGE = 400
+MENTEES_PER_PAGE = 200
 PAGE_INDEX_WIDTH = 5
 SUBPAGE_PREFIX = "{{Wikipedysta:WikiZEITBot/szablon/strona}}"
 
