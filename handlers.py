@@ -53,6 +53,9 @@ class PaginatedHandler(TemplateHandler):
     def get_items_per_page(self, params):
         return self.items_per_page
 
+    def get_subpage_prefix(self, params):
+        return self.subpage_prefix
+
     def handle(self, site, page, params, template_text):
         items = self.fetch_items(site, params)
         per_page = self.get_items_per_page(params)
@@ -68,6 +71,7 @@ class PaginatedHandler(TemplateHandler):
                 scope=scope,
             )]
 
+        prefix = self.get_subpage_prefix(params)
         writes = [PageWrite(
             index=1,
             body=f"{template_text}\n<!-- Wynik działania Bota -->\n{self.render_chunk(chunks[0], params)}",
@@ -77,7 +81,7 @@ class PaginatedHandler(TemplateHandler):
         for idx, batch in enumerate(chunks[1:], start=2):
             writes.append(PageWrite(
                 index=idx,
-                body=f"{self.subpage_prefix}\n{self.render_chunk(batch, params)}",
+                body=f"{prefix}\n{self.render_chunk(batch, params)}",
                 summary=f"[WikiZEIT] {self.template_name}: strona {idx}",
                 scope=scope,
             ))

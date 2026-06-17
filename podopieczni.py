@@ -166,10 +166,13 @@ def is_eligible(name, info):
 class MenteesHandler(PaginatedHandler):
     template_name = "Podopieczni"
     items_per_page = 200
-    subpage_prefix = "{{Podopieczni/strona}}"
+    subpage_prefix = "{{Podopieczni/strona|przewodnik=<przewodnik>}}"
 
     def scope(self, params):
         return params.get('przewodnik')
+
+    def get_subpage_prefix(self, params):
+        return self.subpage_prefix.replace('<przewodnik>', params['przewodnik'])
 
     def get_items_per_page(self, params):
         raw = params.get('limit')
