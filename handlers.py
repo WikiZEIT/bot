@@ -27,11 +27,11 @@ class PaginatedHandler(TemplateHandler):
     def fetch_items(self, site, params):
         raise NotImplementedError
 
-    def render_item(self, item):
+    def render_item(self, item, params):
         raise NotImplementedError
 
-    def render_chunk(self, items):
-        return "\n".join(self.render_item(i) for i in items)
+    def render_chunk(self, items, params):
+        return "\n".join(self.render_item(i, params) for i in items)
 
     def scope(self, params):
         return None
@@ -52,14 +52,14 @@ class PaginatedHandler(TemplateHandler):
 
         writes = [PageWrite(
             index=1,
-            body=f"{template_text}\n<!-- Wynik działania Bota -->\n{self.render_chunk(chunks[0])}",
+            body=f"{template_text}\n<!-- Wynik działania Bota -->\n{self.render_chunk(chunks[0], params)}",
             summary=f"[WikiZEIT] Aktualizacja: {self.template_name}",
             scope=scope,
         )]
         for idx, batch in enumerate(chunks[1:], start=2):
             writes.append(PageWrite(
                 index=idx,
-                body=f"{self.subpage_prefix}\n{self.render_chunk(batch)}",
+                body=f"{self.subpage_prefix}\n{self.render_chunk(batch, params)}",
                 summary=f"[WikiZEIT] {self.template_name}: strona {idx}",
                 scope=scope,
             ))

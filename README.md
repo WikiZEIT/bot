@@ -10,13 +10,15 @@ is large).
 
 ## Supported wiki-side templates
 
-- **`{{Podopieczni|przewodnik=<mentor>|limit=<n>}}`** — list mentees of the given mentor.
-  `przewodnik` is the mentor username (required); `limit` is an optional hard cap on the rendered
-  mentee count. Blocked users and members of the `editor`/`sysop` groups are filtered out. When
-  `USE_SQL` is on, only mentees who edited within `LAST_EDIT_CUTOFF_DAYS` survive, sorted by
-  last-edit timestamp (descending); otherwise the remainder is sorted by editcount. The list is
-  split into subpages of `MenteesHandler.items_per_page` mentees each, named `<page>/00002`,
-  `/00003`, ….
+- **`{{Podopieczni|przewodnik=<mentor>|limit=<n>|edycje=<k>}}`** — list mentees of the given
+  mentor. `przewodnik` is the mentor username (required); `limit` is an optional hard cap on the
+  rendered mentee count; `edycje` controls the `limit=` passed to the per-mentee
+  `{{Specjalna:Wkład/...}}` transclusion (defaults to `5`). Blocked users and members of the
+  `editor`/`sysop` groups are filtered out. When `USE_SQL` is on, only mentees who edited within
+  `LAST_EDIT_CUTOFF_DAYS` survive, sorted by last-edit timestamp (descending); otherwise the
+  remainder is sorted by editcount. The list is split into subpages of
+  `MenteesHandler.items_per_page` mentees each, named `<page>/2`, `/3`, … (padded to the width of
+  the largest index).
 - **`{{Wikipedysta:WikiZEITBot/szablon}}`** — no-op test slot. The bot recognizes it and does
   nothing. Reserved for new handlers under development.
 

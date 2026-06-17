@@ -20,12 +20,14 @@ REPLICA_CNF = os.path.expanduser('~/replica.my.cnf')
 
 EXCLUDED_GROUPS = {'editor', 'sysop'}
 
-# Per-mentee wiki block. <user> is a placeholder substituted via str.replace
-# (chosen over .format so the literal {{ / }} need no escaping).
+# Per-mentee wiki block. <user> and <limit> are placeholders substituted via
+# str.replace (chosen over .format so the literal {{ / }} need no escaping).
 MENTEE_TEMPLATE = """=== <span class="plainlinks">[https://pl.wikipedia.org/wiki/User:<user> <user>]</span> ([[User talk:<user>|dyskusja]] <small>•</small> [[Specjalna:Wkład/<user>|edycje]] <small>•</small> [[Specjalna:Rejestr/<user>|rejestr]]) ===
 <div>
-{{Specjalna:Wkład/<user>|limit=5}}
+{{Specjalna:Wkład/<user>|limit=<limit>}}
 </div>"""
+
+DEFAULT_EDYCJE = 5
 
 
 def fetch_mentees(site, mentor):
@@ -191,5 +193,12 @@ class MenteesHandler(PaginatedHandler):
                 pass
         return mentees
 
-    def render_item(self, mentee):
-        return MENTEE_TEMPLATE.replace('<user>', mentee['name'])
+    def render_item(self, mentee, params):
+        edycje = params.get('edycje') or DEFAULT_EDYCJE
+        try:
+            edycje = int(edycje)
+        except (TypeError, ValueError):
+            edycje = DEFAULT_EDYCJE
+        return (MENTEE_TEMPLATE
+                .replace('<user>', mentee['name'])
+                .replace('<limit>', str(edycje)))
