@@ -50,10 +50,14 @@ class PaginatedHandler(TemplateHandler):
     def scope(self, params):
         return None
 
+    def get_items_per_page(self, params):
+        return self.items_per_page
+
     def handle(self, site, page, params, template_text):
         items = self.fetch_items(site, params)
-        chunks = [items[i:i + self.items_per_page]
-                  for i in range(0, len(items), self.items_per_page)]
+        per_page = self.get_items_per_page(params)
+        chunks = [items[i:i + per_page]
+                  for i in range(0, len(items), per_page)]
         scope = self.scope(params)
 
         if not chunks:
