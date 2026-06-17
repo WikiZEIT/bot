@@ -4,20 +4,37 @@ A [pywikibot](https://www.mediawiki.org/wiki/Manual:Pywikibot)-based bot for the
 running as [WikiZEITBot](https://pl.wikipedia.org/wiki/Wikipedysta:WikiZEITBot).
 
 The bot scans pages in the category **Kategoria:Strony monitorowane przez bota WikiZEIT**, looks
-for a template that declares an action, and writes the rendered result back to the page (using
-paginated subpages when the output is large).
+for a known template invocation on each page, dispatches by template name to the matching handler
+class, and writes the rendered result back to the page (using paginated subpages when the output
+is large).
 
-## Wiki-side template
+## Supported wiki-side templates
 
-```wiki
-{{Wikipedysta:WikiZEITBot/szablon|akcja=<name>|<key>=<value>|...}}
-```
+- **`{{Podopieczni|przewodnik=<mentor>|limit=<n>}}`** — list mentees of the given mentor.
+  `przewodnik` is the mentor username (required); `limit` is an optional hard cap on the rendered
+  mentee count. Blocked users and members of the `editor`/`sysop` groups are filtered out. When
+  `USE_SQL` is on, only mentees who edited within `LAST_EDIT_CUTOFF_DAYS` survive, sorted by
+  last-edit timestamp (descending); otherwise the remainder is sorted by editcount. The list is
+  split into subpages of `MenteesHandler.items_per_page` mentees each, named `<page>/00002`,
+  `/00003`, ….
+- **`{{Wikipedysta:WikiZEITBot/szablon}}`** — no-op test slot. The bot recognizes it and does
+  nothing. Reserved for new handlers under development.
 
-### Supported actions
+## Architecture
 
-- **`akcja=podopieczni|user=<mentor>`** — list mentees of the given mentor. Blocked users and
-  members of the `editor`/`sysop` groups are filtered out; the remainder is sorted by editcount
-  (descending) and split into subpages of `MENTEES_PER_PAGE` mentees, named `<page>/2`, `/3`, ....
+- `bot.py` — controller. Scans the category, matches the regex generated from registered
+  handlers, parses params, calls `handler.handle(...)`, and persists each returned `PageWrite`.
+- `handlers.py` — `TemplateHandler`, `PaginatedHandler` (chunking + main/sub envelopes),
+  `NoOpHandler`, and the `PageWrite` dataclass.
+- `podopieczni.py` — `MenteesHandler` and all mentee-specific code (mentee fetch, user-info via
+  API or SQL, eligibility filter, render template).
+
+Adding a new template:
+
+1. Subclass `TemplateHandler` (one-shot output) or `PaginatedHandler` (paginated output).
+2. Set `template_name` to the exact wiki template name.
+3. Implement `handle()`, or for paginated handlers `fetch_items()` + `render_item()`.
+4. Register an instance in `HANDLERS` inside `bot.py`.
 
 ## Local setup
 
@@ -26,7 +43,7 @@ git clone git@github.com:WikiZEIT/bot.git
 cd bot
 python3 -m venv venv
 source venv/bin/activate
-pip install pywikibot
+pip install pywikibot pymysql
 ```
 
 Create `user-config.py` next to `bot.py`:
@@ -52,17 +69,25 @@ don't get the bot flag).
 
 ## Running
 
-Configurable constants at the top of `bot.py`:
+Configurable constants:
+
+`bot.py` (controller):
 
 | Constant | Meaning |
 | --- | --- |
 | `DEBUG` | When `True`, the bot writes each page's output to `DEBUG_DIR/<n>` files instead of saving to the wiki. Flip to `False` for production. |
 | `DEBUG_DIR` | Output directory for the dry-run (default `pages`). |
-| `MENTEES_PER_PAGE` | Pagination size for `podopieczni`. |
-| `PAGE_INDEX_WIDTH` | Zero-padding width for subpage indices and debug filenames (e.g. `5` → `00001`, `00010`). |
-| `USE_SQL` | When `True`, fetch user info from the Wikimedia SQL replica (`replica.my.cnf`) instead of the API and sort mentees by their last-edit timestamp. Only works on Toolforge. Leave `False` for local testing. |
+| `CATEGORY` | Name of the monitoring category the bot scans. |
+
+`podopieczni.py` (mentees handler):
+
+| Constant | Meaning |
+| --- | --- |
+| `USE_SQL` | When `True`, fetch user info from the Wikimedia SQL replica (`replica.my.cnf`) and sort mentees by last-edit timestamp. Only works on Toolforge. Leave `False` for local testing. |
 | `LAST_EDIT_CUTOFF_DAYS` | In SQL mode, drop mentees whose last edit is older than this many days. |
 | `EXCLUDED_GROUPS` | User groups filtered out of the mentee list (default `{'editor', 'sysop'}`). |
+| `MenteesHandler.items_per_page` | Pagination size. |
+| `MenteesHandler.subpage_prefix` | Wikitext prepended to each subpage body. |
 
 Then:
 
@@ -77,7 +102,7 @@ Tool: `wikizeit-bot` (tool home at `/data/project/wikizeit-bot/`).
 ```bash
 become wikizeit-bot
 git clone git@github.com:WikiZEIT/bot.git
-cd bot && python3 -m venv venv && venv/bin/pip install pywikibot
+cd bot && python3 -m venv venv && venv/bin/pip install pywikibot pymysql
 
 toolforge-jobs run wikizeit-hourly \
   --image python3.11 \
