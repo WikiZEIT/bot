@@ -11,8 +11,8 @@ is large).
 ## Supported wiki-side templates
 
 - **`{{Podopieczni|przewodnik=<mentor>|limit=<n>|edycje=<k>}}`** — list mentees of the given
-  mentor. `przewodnik` is the mentor username (required); `limit` is an optional hard cap on the
-  rendered mentee count; `edycje` controls the `limit=` passed to the per-mentee
+  mentor. `przewodnik` is the mentor username (required); `limit` caps the rendered mentee count
+  (defaults to `200`); `edycje` controls the `limit=` passed to the per-mentee
   `{{Specjalna:Wkład/...}}` transclusion (defaults to `5`). Blocked users and members of the
   `editor`/`sysop` groups are filtered out. When `USE_SQL` is on, only mentees who edited within
   `LAST_EDIT_CUTOFF_DAYS` survive, sorted by last-edit timestamp (descending); otherwise the

@@ -28,6 +28,7 @@ MENTEE_TEMPLATE = """=== <span class="plainlinks">[https://pl.wikipedia.org/wiki
 </div>"""
 
 DEFAULT_EDYCJE = 5
+DEFAULT_LIMIT = 200
 
 
 def fetch_mentees(site, mentor):
@@ -185,13 +186,12 @@ class MenteesHandler(PaginatedHandler):
             mentees.sort(key=lambda m: info.get(m['name'], {}).get('editcount', 0),
                          reverse=True)
 
-        limit = params.get('limit')
-        if limit:
-            try:
-                mentees = mentees[:int(limit)]
-            except ValueError:
-                pass
-        return mentees
+        limit = params.get('limit') or DEFAULT_LIMIT
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = DEFAULT_LIMIT
+        return mentees[:limit]
 
     def render_item(self, mentee, params):
         edycje = params.get('edycje') or DEFAULT_EDYCJE
