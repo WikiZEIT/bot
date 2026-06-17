@@ -31,6 +31,9 @@ is large).
   `NoOpHandler`, and the `PageWrite` dataclass.
 - `podopieczni.py` — `MenteesHandler` and all mentee-specific code (mentee fetch, user-info via
   API or SQL, eligibility filter, render template).
+- `notifications.py` — `NotificationManager`: tracks per-run counters; sends a summary email
+  after a successful run and a `BŁĄD KRYTYCZNY` email with traceback if the bot crashes. Only
+  works on Toolforge (relies on the local Exim relay at `localhost:25`).
 
 Adding a new template:
 
@@ -80,6 +83,7 @@ Configurable constants:
 | --- | --- |
 | `DEBUG` | When `True`, the bot writes each page's output to `DEBUG_DIR/<n>` files instead of saving to the wiki. Flip to `False` for production. |
 | `DEBUG_DIR` | Output directory for the dry-run (default `pages`). |
+| `EMAIL_NOTIFICATIONS` | When `True` (and `DEBUG` is `False`), send a per-run summary email after a successful run and an urgent email with traceback on crash. Forced off while `DEBUG=True`. |
 | `CATEGORY` | Name of the monitoring category the bot scans. |
 
 `podopieczni.py` (mentees handler):

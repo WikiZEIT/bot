@@ -22,11 +22,13 @@ import re
 import pywikibot
 
 from handlers import NoOpHandler
+from notifications import NotificationManager
 from podopieczni import MenteesHandler
 
 
 DEBUG = False
 DEBUG_DIR = 'pages'
+EMAIL_NOTIFICATIONS = True
 
 CATEGORY = 'Kategoria:Strony monitorowane przez bota WikiZEIT'
 
@@ -87,40 +89,51 @@ def persist_write(parent_page, write, width):
 
 
 def main():
-    site = pywikibot.Site('pl', 'wikipedia')
-    cat = pywikibot.Category(site, CATEGORY)
+    notif = NotificationManager(enabled=EMAIL_NOTIFICATIONS and not DEBUG)
+    try:
+        site = pywikibot.Site('pl', 'wikipedia')
+        cat = pywikibot.Category(site, CATEGORY)
 
-    for page in cat.articles():
-        if not page.exists():
-            continue
-
-        pywikibot.output(f"Przetwarzam stronę: {page.title()}")
-        try:
-            m = TEMPLATE_RE.search(page.text)
-            if not m:
+        for page in cat.articles():
+            if not page.exists():
                 continue
 
-            template_name = m.group(1)
-            params = parse_params(m.group(2))
-            handler = HANDLERS_BY_NAME.get(template_name.lower())
-            if handler is None:
-                pywikibot.output(f"Nieznany szablon: {template_name!r}")
-                continue
+            notif.page_processed()
+            pywikibot.output(f"Przetwarzam stronę: {page.title()}")
+            try:
+                m = TEMPLATE_RE.search(page.text)
+                if not m:
+                    continue
 
-            writes = handler.handle(site, page, params, m.group(0))
-            width = len(str(len(writes))) if writes else 1
-            for write in writes:
-                try:
-                    if persist_write(page, write, width):
-                        pywikibot.output(
-                            f"Sukces! {page.title()} szablon={template_name} index={write.index}"
+                template_name = m.group(1)
+                params = parse_params(m.group(2))
+                handler = HANDLERS_BY_NAME.get(template_name.lower())
+                if handler is None:
+                    pywikibot.output(f"Nieznany szablon: {template_name!r}")
+                    continue
+
+                writes = handler.handle(site, page, params, m.group(0))
+                width = len(str(len(writes))) if writes else 1
+                for write in writes:
+                    try:
+                        if persist_write(page, write, width):
+                            notif.write_succeeded()
+                            pywikibot.output(
+                                f"Sukces! {page.title()} szablon={template_name} index={write.index}"
+                            )
+                    except Exception as exc:
+                        notif.record_error(f"{page.title()} index={write.index}", exc)
+                        pywikibot.error(
+                            f"Błąd przy zapisie {page.title()} index={write.index}: {exc}"
                         )
-                except Exception as exc:
-                    pywikibot.error(
-                        f"Błąd przy zapisie {page.title()} index={write.index}: {exc}"
-                    )
-        except Exception as exc:
-            pywikibot.error(f"Błąd przy stronie {page.title()}: {exc}")
+            except Exception as exc:
+                notif.record_error(page.title(), exc)
+                pywikibot.error(f"Błąd przy stronie {page.title()}: {exc}")
+
+        notif.send_summary()
+    except Exception as exc:
+        notif.send_failure(exc)
+        raise
 
 
 if __name__ == '__main__':
