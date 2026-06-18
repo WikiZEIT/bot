@@ -30,7 +30,7 @@ class PageWrite:
 class TemplateHandler:
     template_name: str = ""
 
-    def handle(self, site, page, params, template_text):
+    def handle(self, site, page, params, template_text, new_only=False):
         raise NotImplementedError
 
 
@@ -56,8 +56,7 @@ class PaginatedHandler(TemplateHandler):
     def get_subpage_prefix(self, params):
         return self.subpage_prefix
 
-    def handle(self, site, page, params, template_text):
-        items = self.fetch_items(site, params)
+    def build_writes(self, items, params, template_text):
         per_page = self.get_items_per_page(params)
         chunks = [items[i:i + per_page]
                   for i in range(0, len(items), per_page)]
@@ -87,9 +86,13 @@ class PaginatedHandler(TemplateHandler):
             ))
         return writes
 
+    def handle(self, site, page, params, template_text, new_only=False):
+        items = self.fetch_items(site, params)
+        return self.build_writes(items, params, template_text)
+
 
 class NoOpHandler(TemplateHandler):
     template_name = "Wikipedysta:WikiZEITBot/szablon"
 
-    def handle(self, site, page, params, template_text):
+    def handle(self, site, page, params, template_text, new_only=False):
         return []

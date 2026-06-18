@@ -34,6 +34,9 @@ is large).
 - `notifications.py` — `NotificationManager`: tracks per-run counters; sends a summary email
   after a successful run and a `BŁĄD KRYTYCZNY` email with traceback if the bot crashes. Only
   works on Toolforge (relies on the local Exim relay at `localhost:25`).
+- `state.py` — generic JSON-file state store at `~/state/<domain>/<key>.json`. Atomic writes
+  via tempfile + `os.replace`. Used by `MenteesHandler` to detect "nothing changed" between
+  hourly runs.
 
 Adding a new template:
 
@@ -99,8 +102,15 @@ Configurable constants:
 Then:
 
 ```bash
-python bot.py
+python bot.py              # full update: re-render every monitored page
+python bot.py --new-only   # incremental: skip pages whose params + mentee list
+                           # match the previously saved state in ~/state/podopieczni/<mentor>.json
 ```
+
+The `MenteesHandler` writes `~/state/podopieczni/<mentor>.json` after every successful run
+containing the current template params and a SHA-256 hash of the sorted eligible-mentee names.
+A subsequent `--new-only` run reads that file; if both `params` and `mentees_hash` match the
+current run, the handler returns `[]` and the page is skipped entirely (no wiki traffic).
 
 ## Toolforge deployment
 
@@ -114,6 +124,11 @@ cd bot && python3 -m venv venv && venv/bin/pip install pywikibot pymysql
 toolforge-jobs run wikizeit-hourly \
   --image python3.11 \
   --schedule '0 * * * *' \
+  --command '/data/project/wikizeit-bot/bot/venv/bin/python /data/project/wikizeit-bot/bot/bot.py --new-only'
+
+toolforge-jobs run wikizeit-daily \
+  --image python3.11 \
+  --schedule '0 0 * * *' \
   --command '/data/project/wikizeit-bot/bot/venv/bin/python /data/project/wikizeit-bot/bot/bot.py'
 ```
 

@@ -15,14 +15,20 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 
 import pymysql
 import pymysql.cursors
+import pywikibot
 from pywikibot.data import api
 
+import state
 from handlers import PageWrite, PaginatedHandler
+
+
+STATE_DOMAIN = 'podopieczni'
 
 
 USE_SQL = True
@@ -184,14 +190,41 @@ class MenteesHandler(PaginatedHandler):
             pass
         return self.items_per_page
 
-    def handle(self, site, page, params, template_text):
+    def handle(self, site, page, params, template_text, new_only=False):
         if not params.get('przewodnik'):
             return [PageWrite(
                 index=1,
                 body=f"{template_text}\n<!-- brak parametru: przewodnik -->",
                 summary=f"[WikiZEIT] {self.template_name}: brak parametru przewodnik",
             )]
-        return super().handle(site, page, params, template_text)
+
+        mentees = self.fetch_items(site, params)
+        names = sorted(m['name'] for m in mentees)
+        mentees_hash = hashlib.sha256('\n'.join(names).encode('utf-8')).hexdigest()
+        current = {'params': dict(params), 'mentees_hash': mentees_hash}
+        scope = self.scope(params)
+
+        if new_only:
+            stored = state.load(STATE_DOMAIN, scope)
+            if stored == current and self._outputs_exist(page, params, mentees):
+                return []
+
+        writes = self.build_writes(mentees, params, template_text)
+        state.save(STATE_DOMAIN, scope, current)
+        return writes
+
+    def _outputs_exist(self, page, params, mentees):
+        per_page = self.get_items_per_page(params)
+        num_chunks = max(1, (len(mentees) + per_page - 1) // per_page)
+        width = len(str(num_chunks))
+
+        if not page.exists():
+            return False
+        for idx in range(2, num_chunks + 1):
+            sub = pywikibot.Page(page.site, f"{page.title()}/{idx:0{width}d}")
+            if not sub.exists():
+                return False
+        return True
 
     def fetch_items(self, site, params):
         mentor = params['przewodnik']

@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import argparse
 import os
 import re
 
@@ -88,7 +89,7 @@ def persist_write(parent_page, write, width):
     return True
 
 
-def main():
+def main(new_only=False):
     notif = NotificationManager(enabled=EMAIL_NOTIFICATIONS and not DEBUG)
     try:
         site = pywikibot.Site('pl', 'wikipedia')
@@ -112,8 +113,12 @@ def main():
                     pywikibot.output(f"Nieznany szablon: {template_name!r}")
                     continue
 
-                writes = handler.handle(site, page, params, m.group(0))
-                width = len(str(len(writes))) if writes else 1
+                writes = handler.handle(site, page, params, m.group(0), new_only=new_only)
+                if not writes:
+                    pywikibot.output(f"Pomijam (bez zmian): {page.title()}")
+                    continue
+
+                width = len(str(len(writes)))
                 for write in writes:
                     try:
                         if persist_write(page, write, width):
@@ -137,7 +142,14 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="WikiZEIT Bot.")
+    parser.add_argument(
+        '--new-only',
+        action='store_true',
+        help="Skip pages whose params and inputs match the last saved state.",
+    )
+    args = parser.parse_args()
     try:
-        main()
+        main(new_only=args.new_only)
     except KeyboardInterrupt:
         pass
