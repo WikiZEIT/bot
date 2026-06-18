@@ -17,6 +17,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
+import logging
 import os
 import re
 
@@ -25,6 +26,28 @@ import pywikibot
 from handlers import NoOpHandler
 from notifications import NotificationManager
 from podopieczni import MenteesHandler
+
+
+class _SuppressRetryTraceback(logging.Filter):
+    """Drop pywikibot's ERROR-level tracebacks for recoverable timeouts.
+    Pywikibot retries internally; the traceback in the log is noise."""
+
+    def filter(self, record):
+        if record.levelno != logging.ERROR:
+            return True
+        msg = record.getMessage()
+        if 'Read timed out' in msg or 'ServerError' in msg:
+            return False
+        if record.exc_info:
+            _, exc_value, _ = record.exc_info
+            if exc_value and 'Read timed out' in str(exc_value):
+                return False
+        return True
+
+
+_retry_filter = _SuppressRetryTraceback()
+for _name in ('pywikibot', 'pywikibot.comms.http', 'pywikibot.data.api._requests'):
+    logging.getLogger(_name).addFilter(_retry_filter)
 
 
 DEBUG = False
