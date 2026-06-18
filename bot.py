@@ -179,7 +179,7 @@ def main(new_only=False, send_summary=False, migrate=False):
                             f"Błąd przy zapisie {page.title()} index={write.index}: {exc}"
                         )
 
-                if all_ok and commit is not None:
+                if all_ok and commit is not None and not DEBUG:
                     try:
                         commit()
                     except Exception as exc:
