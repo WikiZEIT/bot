@@ -94,7 +94,7 @@ def fetch_uploads(users, limit):
     try:
         with conn.cursor() as cursor:
             for user in users:
-                db_name = _canonical_username(user).replace(' ', '_').encode('utf-8')
+                db_name = _canonical_username(user).encode('utf-8')
                 cursor.execute(
                     """
                     SELECT img_name
