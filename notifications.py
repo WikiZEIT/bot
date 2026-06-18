@@ -23,7 +23,7 @@ from datetime import datetime
 from email.message import EmailMessage
 
 
-SMTP_HOST = 'localhost'
+SMTP_HOST = 'mail.tools.wmcloud.org'
 SMTP_PORT = 25
 
 FROM_ADDR = 'tools.wikizeit-bot@toolforge.org'
