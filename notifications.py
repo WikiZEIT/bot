@@ -22,6 +22,8 @@ import traceback
 from datetime import datetime
 from email.message import EmailMessage
 
+import db
+
 
 SMTP_HOST = 'mail.tools.wmcloud.org'
 SMTP_PORT = 25
@@ -132,6 +134,18 @@ class NotificationManager:
             body += f"\nZaktualizowane strony ({len(updated)}):\n"
             for p in updated:
                 body += f"  - {p}\n"
+
+        try:
+            since = db.get_last_digest_time() or entries[0].get('started', '')
+            newcomers = db.get_newcomers_since(since) if since else {}
+            if newcomers:
+                total_new = sum(len(v) for v in newcomers.values())
+                body += f"\nNowi podopieczni od {since} ({total_new}):\n"
+                for mentor, names in newcomers.items():
+                    body += f"  {mentor} (+{len(names)}): {', '.join(names)}\n"
+        except Exception as e:
+            body += f"\n(Błąd przy pobieraniu nowych podopiecznych: {e})\n"
+
         if errors:
             body += "\nBłędy:\n"
             for when, where, exc in errors:
@@ -149,6 +163,10 @@ class NotificationManager:
         try:
             _send("Podsumowanie", body)
             self._clear_log()
+            try:
+                db.set_last_digest_time()
+            except Exception as e:
+                print(f"[notifications] Nie udało się zapisać czasu digestu: {e}")
         except Exception as e:
             print(f"[notifications] Nie udało się wysłać podsumowania: {e}")
 

@@ -15,7 +15,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -24,11 +23,8 @@ import pymysql.cursors
 import pywikibot
 from pywikibot.data import api
 
-import state
+import db
 from handlers import PageWrite, PaginatedHandler
-
-
-STATE_DOMAIN = 'podopieczni'
 
 
 USE_SQL = True
@@ -191,7 +187,8 @@ class MenteesHandler(PaginatedHandler):
         return self.items_per_page
 
     def handle(self, site, page, params, template_text, new_only=False):
-        if not params.get('przewodnik'):
+        mentor = params.get('przewodnik')
+        if not mentor:
             return [PageWrite(
                 index=1,
                 body=f"{template_text}\n<!-- brak parametru: przewodnik -->",
@@ -199,19 +196,45 @@ class MenteesHandler(PaginatedHandler):
             )], None
 
         mentees = self.fetch_items(site, params)
-        names = sorted(m['name'] for m in mentees)
-        mentees_hash = hashlib.sha256('\n'.join(names).encode('utf-8')).hexdigest()
-        current = {'params': dict(params), 'mentees_hash': mentees_hash}
-        scope = self.scope(params)
+        current_names = sorted(m['name'] for m in mentees)
+        params_dict = dict(params)
 
         if new_only:
-            stored = state.load(STATE_DOMAIN, scope)
-            if stored == current and self._outputs_exist(page, params, mentees):
+            stored_params = db.get_params(mentor)
+            stored_mentees = db.get_mentee_set(mentor)
+            if (stored_params == params_dict
+                    and stored_mentees == set(current_names)
+                    and self._outputs_exist(page, params, mentees)):
                 return [], None
 
         writes = self.build_writes(mentees, params, template_text)
-        commit = lambda: state.save(STATE_DOMAIN, scope, current)
+
+        def commit():
+            added, removed = db.update_mentor(mentor, params_dict, current_names)
+            if added or removed:
+                pywikibot.output(
+                    f"Zmiany u {mentor}: +{len(added)} nowych, -{len(removed)} odeszło"
+                )
+                if added:
+                    pywikibot.output(f"  Nowi: {', '.join(sorted(added))}")
+                if removed:
+                    pywikibot.output(f"  Odeszli: {', '.join(sorted(removed))}")
+
         return writes, commit
+
+    def migrate(self, site, page, params, template_text):
+        mentor = params.get('przewodnik')
+        if not mentor:
+            return
+        mentees = self.fetch_items(site, params)
+        current_names = sorted(m['name'] for m in mentees)
+        added, _ = db.update_mentor(
+            mentor,
+            dict(params),
+            current_names,
+            first_seen_override='1970-01-01T00:00:00+00:00',
+        )
+        pywikibot.output(f"Migracja {mentor}: zapisano {len(added)} podopiecznych")
 
     def _outputs_exist(self, page, params, mentees):
         per_page = self.get_items_per_page(params)

@@ -36,9 +36,11 @@ is large).
   log, mails a digest, and clears the file. Error emails (`send_failure`) are always sent
   regardless of `--summary`. Only works on Toolforge (relies on the local Exim relay at
   `localhost:25`).
-- `state.py` — generic JSON-file state store at `~/state/<domain>/<key>.json`. Atomic writes
-  via tempfile + `os.replace`. Used by `MenteesHandler` to detect "nothing changed" between
-  hourly runs.
+- `db.py` — SQLite store at `~/state/bot.db` (auto-created on first run). Tables:
+  `mentor_params` (last seen template params per mentor), `mentee_membership` (per-mentor
+  mentee roster with `first_seen` / `last_seen`), `digest_meta` (last sent digest timestamp).
+  `update_mentor(...)` atomically reconciles the roster and returns the `(added, removed)` sets.
+- `state.py` — legacy generic JSON store; currently unused, kept for reference.
 
 Adding a new template:
 
@@ -54,8 +56,10 @@ git clone git@github.com:WikiZEIT/bot.git
 cd bot
 python3 -m venv venv
 source venv/bin/activate
-pip install pywikibot pymysql
+pip install -r requirements.txt
 ```
+
+To upgrade later: `pip install -r requirements.txt --upgrade`.
 
 Create `user-config.py` next to `bot.py`:
 
@@ -106,12 +110,30 @@ Then:
 ```bash
 python bot.py              # full update: re-render every monitored page, no email
 python bot.py --new-only   # incremental: skip pages whose params + mentee list
-                           # match the previously saved state in ~/state/podopieczni/<mentor>.json
+                           # match the state stored in ~/state/bot.db
 python bot.py --summary    # full update + email the accumulated digest, then clear the log
+python bot.py --migrate    # populate ~/state/bot.db from the current wiki state
+                           # without re-rendering anything (one-off bootstrap)
 ```
+
+After deploying or upgrading the bot for the first time on a host where pages were rendered by a
+previous version, run `python bot.py --migrate` once. It walks the monitored category, fetches
+each mentor's current eligible mentee set, and inserts the rows into `mentee_membership` with a
+sentinel `first_seen = 1970-01-01` so they don't appear as newcomers in the next digest. The
+following `--new-only` run will then be a cache hit and skip every page that genuinely hasn't
+changed.
 
 `--new-only` and `--summary` compose freely — typical Toolforge layout uses `--new-only` hourly
 (append-only logging, no mail) and `--summary` daily (full run, send digest).
+
+The `MenteesHandler` reconciles its mentee roster against `~/state/bot.db` after every successful
+run. A subsequent `--new-only` run is a cache hit when the stored params match the current ones
+**and** the stored mentee set matches the current eligible set **and** the corresponding wiki
+pages exist; otherwise it re-renders and updates the DB. Each commit logs `Zmiany u <mentor>:
++N nowych, -M odeszło` so you can see joins and departures in the job log.
+
+The daily digest reads `mentee_membership.first_seen >= digest_meta.last_digest_time` and
+appends a "Nowi podopieczni" section listing newcomers per mentor since the previous digest.
 
 The `MenteesHandler` writes `~/state/podopieczni/<mentor>.json` after every successful run
 containing the current template params and a SHA-256 hash of the sorted eligible-mentee names.
@@ -125,7 +147,7 @@ Tool: `wikizeit-bot` (tool home at `/data/project/wikizeit-bot/`).
 ```bash
 become wikizeit-bot
 git clone git@github.com:WikiZEIT/bot.git
-cd bot && python3 -m venv venv && venv/bin/pip install pywikibot pymysql
+cd bot && python3 -m venv venv && venv/bin/pip install -r requirements.txt pymysql
 
 toolforge-jobs run wikizeit-hourly \
   --image python3.11 \

@@ -113,9 +113,11 @@ def persist_write(parent_page, write, width):
     return True
 
 
-def main(new_only=False, send_summary=False):
+def main(new_only=False, send_summary=False, migrate=False):
     start = datetime.now()
     flags = []
+    if migrate:
+        flags.append('--migrate')
     if new_only:
         flags.append('--new-only')
     if send_summary:
@@ -123,7 +125,7 @@ def main(new_only=False, send_summary=False):
     flags_str = ' '.join(flags) if flags else '(brak flag)'
     pywikibot.output(f"==== START {start.isoformat(timespec='seconds')} {flags_str} ====")
 
-    notif = NotificationManager(enabled=EMAIL_NOTIFICATIONS and not DEBUG)
+    notif = NotificationManager(enabled=EMAIL_NOTIFICATIONS and not DEBUG and not migrate)
     try:
         site = pywikibot.Site('pl', 'wikipedia')
         cat = pywikibot.Category(site, CATEGORY)
@@ -144,6 +146,10 @@ def main(new_only=False, send_summary=False):
                 handler = HANDLERS_BY_NAME.get(template_name.lower())
                 if handler is None:
                     pywikibot.output(f"Nieznany szablon: {template_name!r}")
+                    continue
+
+                if migrate:
+                    handler.migrate(site, page, params, m.group(0))
                     continue
 
                 writes, commit = handler.handle(site, page, params, m.group(0), new_only=new_only)
@@ -176,7 +182,8 @@ def main(new_only=False, send_summary=False):
                 notif.record_error(page.title(), exc)
                 pywikibot.error(f"Błąd przy stronie {page.title()}: {exc}")
 
-        notif.finish(send_email=send_summary)
+        if not migrate:
+            notif.finish(send_email=send_summary)
     except Exception as exc:
         notif.send_failure(exc)
         end = datetime.now()
@@ -204,8 +211,13 @@ if __name__ == '__main__':
         action='store_true',
         help="Send the accumulated digest email at the end of the run and clear the log.",
     )
+    parser.add_argument(
+        '--migrate',
+        action='store_true',
+        help="Populate the database from the current wiki state without re-rendering pages.",
+    )
     args = parser.parse_args()
     try:
-        main(new_only=args.new_only, send_summary=args.summary)
+        main(new_only=args.new_only, send_summary=args.summary, migrate=args.migrate)
     except KeyboardInterrupt:
         pass

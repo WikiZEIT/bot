@@ -35,6 +35,11 @@ class TemplateHandler:
         that the controller invokes only after every write succeeds."""
         raise NotImplementedError
 
+    def migrate(self, site, page, params, template_text):
+        """Populate any persistent state from the current wiki state without
+        producing writes. Default no-op for stateless handlers."""
+        return
+
 
 class PaginatedHandler(TemplateHandler):
     items_per_page: int = 200
