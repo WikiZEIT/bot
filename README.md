@@ -31,9 +31,11 @@ is large).
   `NoOpHandler`, and the `PageWrite` dataclass.
 - `podopieczni.py` — `MenteesHandler` and all mentee-specific code (mentee fetch, user-info via
   API or SQL, eligibility filter, render template).
-- `notifications.py` — `NotificationManager`: tracks per-run counters; sends a summary email
-  after a successful run and a `BŁĄD KRYTYCZNY` email with traceback if the bot crashes. Only
-  works on Toolforge (relies on the local Exim relay at `localhost:25`).
+- `notifications.py` — `NotificationManager`: tracks per-run counters, appends each run to
+  `~/state/notifications/runs.jsonl`, and when invoked with `--summary` reads the accumulated
+  log, mails a digest, and clears the file. Error emails (`send_failure`) are always sent
+  regardless of `--summary`. Only works on Toolforge (relies on the local Exim relay at
+  `localhost:25`).
 - `state.py` — generic JSON-file state store at `~/state/<domain>/<key>.json`. Atomic writes
   via tempfile + `os.replace`. Used by `MenteesHandler` to detect "nothing changed" between
   hourly runs.
@@ -102,10 +104,14 @@ Configurable constants:
 Then:
 
 ```bash
-python bot.py              # full update: re-render every monitored page
+python bot.py              # full update: re-render every monitored page, no email
 python bot.py --new-only   # incremental: skip pages whose params + mentee list
                            # match the previously saved state in ~/state/podopieczni/<mentor>.json
+python bot.py --summary    # full update + email the accumulated digest, then clear the log
 ```
+
+`--new-only` and `--summary` compose freely — typical Toolforge layout uses `--new-only` hourly
+(append-only logging, no mail) and `--summary` daily (full run, send digest).
 
 The `MenteesHandler` writes `~/state/podopieczni/<mentor>.json` after every successful run
 containing the current template params and a SHA-256 hash of the sorted eligible-mentee names.
@@ -129,7 +135,7 @@ toolforge-jobs run wikizeit-hourly \
 toolforge-jobs run wikizeit-daily \
   --image python3.11 \
   --schedule '0 0 * * *' \
-  --command '/data/project/wikizeit-bot/bot/venv/bin/python /data/project/wikizeit-bot/bot/bot.py'
+  --command '/data/project/wikizeit-bot/bot/venv/bin/python /data/project/wikizeit-bot/bot/bot.py --summary'
 ```
 
 Keep `user-config.py` and `user-password.py` in `/data/project/wikizeit-bot/` (outside the repo)

@@ -89,7 +89,7 @@ def persist_write(parent_page, write, width):
     return True
 
 
-def main(new_only=False):
+def main(new_only=False, send_summary=False):
     notif = NotificationManager(enabled=EMAIL_NOTIFICATIONS and not DEBUG)
     try:
         site = pywikibot.Site('pl', 'wikipedia')
@@ -122,7 +122,7 @@ def main(new_only=False):
                 for write in writes:
                     try:
                         if persist_write(page, write, width):
-                            notif.write_succeeded()
+                            notif.write_succeeded(page.title())
                             pywikibot.output(
                                 f"Sukces! {page.title()} szablon={template_name} index={write.index}"
                             )
@@ -135,7 +135,7 @@ def main(new_only=False):
                 notif.record_error(page.title(), exc)
                 pywikibot.error(f"Błąd przy stronie {page.title()}: {exc}")
 
-        notif.send_summary()
+        notif.finish(send_email=send_summary)
     except Exception as exc:
         notif.send_failure(exc)
         raise
@@ -148,8 +148,13 @@ if __name__ == '__main__':
         action='store_true',
         help="Skip pages whose params and inputs match the last saved state.",
     )
+    parser.add_argument(
+        '--summary',
+        action='store_true',
+        help="Send the accumulated digest email at the end of the run and clear the log.",
+    )
     args = parser.parse_args()
     try:
-        main(new_only=args.new_only)
+        main(new_only=args.new_only, send_summary=args.summary)
     except KeyboardInterrupt:
         pass
