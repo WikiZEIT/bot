@@ -3,3 +3,4 @@ user-password.py
 throttle.ctrl
 apicache
 pages
+__pycache__
