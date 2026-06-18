@@ -113,12 +113,13 @@ def main(new_only=False, send_summary=False):
                     pywikibot.output(f"Nieznany szablon: {template_name!r}")
                     continue
 
-                writes = handler.handle(site, page, params, m.group(0), new_only=new_only)
+                writes, commit = handler.handle(site, page, params, m.group(0), new_only=new_only)
                 if not writes:
                     pywikibot.output(f"Pomijam (bez zmian): {page.title()}")
                     continue
 
                 width = len(str(len(writes)))
+                all_ok = True
                 for write in writes:
                     try:
                         if persist_write(page, write, width):
@@ -127,10 +128,17 @@ def main(new_only=False, send_summary=False):
                                 f"Sukces! {page.title()} szablon={template_name} index={write.index}"
                             )
                     except Exception as exc:
+                        all_ok = False
                         notif.record_error(f"{page.title()} index={write.index}", exc)
                         pywikibot.error(
                             f"Błąd przy zapisie {page.title()} index={write.index}: {exc}"
                         )
+
+                if all_ok and commit is not None:
+                    try:
+                        commit()
+                    except Exception as exc:
+                        pywikibot.error(f"Błąd zapisu stanu dla {page.title()}: {exc}")
             except Exception as exc:
                 notif.record_error(page.title(), exc)
                 pywikibot.error(f"Błąd przy stronie {page.title()}: {exc}")

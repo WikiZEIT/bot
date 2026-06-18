@@ -31,6 +31,8 @@ class TemplateHandler:
     template_name: str = ""
 
     def handle(self, site, page, params, template_text, new_only=False):
+        """Returns (writes, commit) where commit is None or a no-argument callable
+        that the controller invokes only after every write succeeds."""
         raise NotImplementedError
 
 
@@ -88,11 +90,11 @@ class PaginatedHandler(TemplateHandler):
 
     def handle(self, site, page, params, template_text, new_only=False):
         items = self.fetch_items(site, params)
-        return self.build_writes(items, params, template_text)
+        return self.build_writes(items, params, template_text), None
 
 
 class NoOpHandler(TemplateHandler):
     template_name = "Wikipedysta:WikiZEITBot/szablon"
 
     def handle(self, site, page, params, template_text, new_only=False):
-        return []
+        return [], None

@@ -62,7 +62,7 @@ class NotificationManager:
             self.updated_pages.append(page_title)
 
     def record_error(self, where, exc):
-        self.errors.append((where, f"{type(exc).__name__}: {exc}"))
+        self.errors.append((datetime.now().isoformat(), where, f"{type(exc).__name__}: {exc}"))
 
     def _append_log(self):
         try:
@@ -114,8 +114,12 @@ class NotificationManager:
 
         errors = []
         for e in entries:
-            for where, exc in e.get('errors', []):
-                errors.append((e.get('finished', '?'), where, exc))
+            for item in e.get('errors', []):
+                if len(item) == 3:
+                    errors.append(tuple(item))
+                else:
+                    where, exc = item
+                    errors.append((e.get('finished', '?'), where, exc))
 
         body = (
             f"Zakres: {entries[0].get('started', '?')} → {entries[-1].get('finished', '?')}\n"

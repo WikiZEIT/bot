@@ -196,7 +196,7 @@ class MenteesHandler(PaginatedHandler):
                 index=1,
                 body=f"{template_text}\n<!-- brak parametru: przewodnik -->",
                 summary=f"[WikiZEIT] {self.template_name}: brak parametru przewodnik",
-            )]
+            )], None
 
         mentees = self.fetch_items(site, params)
         names = sorted(m['name'] for m in mentees)
@@ -207,11 +207,11 @@ class MenteesHandler(PaginatedHandler):
         if new_only:
             stored = state.load(STATE_DOMAIN, scope)
             if stored == current and self._outputs_exist(page, params, mentees):
-                return []
+                return [], None
 
         writes = self.build_writes(mentees, params, template_text)
-        state.save(STATE_DOMAIN, scope, current)
-        return writes
+        commit = lambda: state.save(STATE_DOMAIN, scope, current)
+        return writes, commit
 
     def _outputs_exist(self, page, params, mentees):
         per_page = self.get_items_per_page(params)
