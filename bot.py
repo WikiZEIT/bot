@@ -17,6 +17,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
+import dataclasses
 import logging
 import os
 import re
@@ -159,9 +160,12 @@ def main(new_only=False, send_summary=False, migrate=False):
                     pywikibot.output(f"Pomijam (bez zmian): {page.title()}")
                     continue
 
+                prefix = page.text[:m.start()]
                 width = len(str(len(writes)))
                 all_ok = True
                 for write in writes:
+                    if write.index == 1 and prefix:
+                        write = dataclasses.replace(write, body=prefix + write.body)
                     try:
                         if persist_write(page, write, width):
                             notif.write_succeeded(page.title())
