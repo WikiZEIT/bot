@@ -58,12 +58,10 @@ EMAIL_NOTIFICATIONS = True
 
 CATEGORY = 'Kategoria:Strony monitorowane przez bota WikiZEIT'
 
-_szablon_handler = SzablonHandler()
-_szablon_handler.sub_handlers['fotografia'] = FotografiaHandler()
-
 HANDLERS = [
     MenteesHandler(),
-    _szablon_handler,
+    FotografiaHandler(),
+    SzablonHandler(),
 ]
 HANDLERS_BY_NAME = {h.template_name.lower(): h for h in HANDLERS}
 

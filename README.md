@@ -20,6 +20,10 @@ is large).
   remainder is sorted by editcount. The list is split into subpages of
   `MenteesHandler.items_per_page` mentees each, named `<page>/2`, `/3`, … (padded to the width of
   the largest index).
+- **`{{Fotografia}}`** (optional `|limit=<n>`) — gallery of the latest Commons uploads for every
+  Wikipedia photographer listed at `Wikiprojekt:Fotografia/Uczestnicy`. `limit` is the per-user
+  upload count (default `10`, capped at `20`). Files are fetched from the Wikimedia Commons SQL
+  replica, so this template only works on Toolforge.
 - **`{{Wikipedysta:WikiZEITBot/szablon}}`** — no-op test slot. The bot recognizes it and does
   nothing. Reserved for new handlers under development.
 
