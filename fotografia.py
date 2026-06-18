@@ -42,7 +42,7 @@ MAX_LIMIT = 20
 USER_LINK_RE = re.compile(r'\[\[(?:user|Wikipedysta):([^|\]]+)', flags=re.I)
 ROW_SEP_RE = re.compile(r'\n\|-')
 
-USER_TEMPLATE = """=== <span class="plainlinks">[https://pl.wikipedia.org/wiki/User:<user> <user>]</span> ===
+USER_TEMPLATE = """=== <span class="plainlinks">[https://pl.wikipedia.org/wiki/User:<user_url> <user>]</span> ===
 <gallery>
 <files>
 </gallery>"""
@@ -119,6 +119,7 @@ def fetch_uploads(users, limit):
 
 def render_user(user, files):
     return (USER_TEMPLATE
+            .replace('<user_url>', user.replace(' ', '_'))
             .replace('<user>', user)
             .replace('<files>', "\n".join(f"File:{f}" for f in files)))
 

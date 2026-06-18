@@ -38,7 +38,7 @@ EXCLUDED_GROUPS = {'editor', 'sysop'}
 
 # Per-mentee wiki block. <user> and <limit> are placeholders substituted via
 # str.replace (chosen over .format so the literal {{ / }} need no escaping).
-MENTEE_TEMPLATE = """=== <span class="plainlinks">[https://pl.wikipedia.org/wiki/User:<user> <user>]</span> ([[User talk:<user>|dyskusja]] <small>•</small> [[Specjalna:Wkład/<user>|edycje]] <small>•</small> [[Specjalna:Rejestr/<user>|rejestr]]) ===
+MENTEE_TEMPLATE = """=== <span class="plainlinks">[https://pl.wikipedia.org/wiki/User:<user_url> <user>]</span> ([[User talk:<user>|dyskusja]] <small>•</small> [[Specjalna:Wkład/<user>|edycje]] <small>•</small> [[Specjalna:Rejestr/<user>|rejestr]]) ===
 <div>
 {{Specjalna:Wkład/<user>|limit=<limit>}}
 </div>"""
@@ -276,6 +276,8 @@ class MenteesHandler(PaginatedHandler):
             edycje = int(edycje)
         except (TypeError, ValueError):
             edycje = DEFAULT_EDYCJE
+        name = mentee['name']
         return (MENTEE_TEMPLATE
-                .replace('<user>', mentee['name'])
+                .replace('<user_url>', name.replace(' ', '_'))
+                .replace('<user>', name)
                 .replace('<limit>', str(edycje)))
