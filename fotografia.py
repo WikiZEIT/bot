@@ -17,6 +17,7 @@
 
 import os
 import re
+import unicodedata
 
 import pymysql
 import pymysql.cursors
@@ -66,32 +67,21 @@ def fetch_photographers(site):
     return users
 
 
+def _canonical_username(name):
+    """Apply MediaWiki's first-letter uppercase rule and NFC normalize."""
+    if not name:
+        return name
+    name = unicodedata.normalize('NFC', name)
+    return name[0].upper() + name[1:]
+
+
 def fetch_uploads(users, limit):
     """Return {user: [filenames]} of the `limit` most recent uploads per user
-    from the Wikimedia Commons SQL replica, in a single query using
-    ROW_NUMBER() OVER (...). Users with no uploads or no Commons account
-    simply don't appear in the result."""
+    from the Wikimedia Commons SQL replica. Users with no uploads or no
+    Commons account simply don't appear in the result. The result dict keys
+    match the original `users` strings so the caller can map back."""
     if not users:
         return {}
-
-    db_names = [u.replace(' ', '_').encode('utf-8') for u in users]
-    placeholders = ', '.join(['%s'] * len(db_names))
-
-    query = f"""
-        SELECT actor_name, img_name FROM (
-            SELECT
-                a.actor_name,
-                i.img_name,
-                ROW_NUMBER() OVER (
-                    PARTITION BY a.actor_id ORDER BY i.img_timestamp DESC
-                ) AS rn
-            FROM image i
-            JOIN actor a ON a.actor_id = i.img_actor
-            WHERE a.actor_name IN ({placeholders})
-        ) ranked
-        WHERE rn <= %s
-        ORDER BY actor_name, rn
-    """
 
     conn = pymysql.connect(
         read_default_file=REPLICA_CNF,
@@ -103,11 +93,25 @@ def fetch_uploads(users, limit):
     result = {}
     try:
         with conn.cursor() as cursor:
-            cursor.execute(query, (*db_names, limit))
-            for row in cursor.fetchall():
-                name = row['actor_name'].decode('utf-8').replace('_', ' ')
-                img_name = row['img_name'].decode('utf-8').replace('_', ' ')
-                result.setdefault(name, []).append(img_name)
+            for user in users:
+                db_name = _canonical_username(user).replace(' ', '_').encode('utf-8')
+                cursor.execute(
+                    """
+                    SELECT img_name
+                    FROM image
+                    JOIN actor ON actor.actor_id = image.img_actor
+                    WHERE actor.actor_name = %s
+                    ORDER BY img_timestamp DESC
+                    LIMIT %s
+                    """,
+                    (db_name, limit),
+                )
+                files = [
+                    row['img_name'].decode('utf-8').replace('_', ' ')
+                    for row in cursor.fetchall()
+                ]
+                if files:
+                    result[user] = files
     finally:
         conn.close()
     return result
