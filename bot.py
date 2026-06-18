@@ -24,7 +24,8 @@ from datetime import datetime
 
 import pywikibot
 
-from handlers import NoOpHandler
+from fotografia import FotografiaHandler
+from handlers import SzablonHandler
 from notifications import NotificationManager
 from podopieczni import MenteesHandler
 
@@ -57,9 +58,12 @@ EMAIL_NOTIFICATIONS = True
 
 CATEGORY = 'Kategoria:Strony monitorowane przez bota WikiZEIT'
 
+_szablon_handler = SzablonHandler()
+_szablon_handler.sub_handlers['fotografia'] = FotografiaHandler()
+
 HANDLERS = [
     MenteesHandler(),
-    NoOpHandler(),
+    _szablon_handler,
 ]
 HANDLERS_BY_NAME = {h.template_name.lower(): h for h in HANDLERS}
 

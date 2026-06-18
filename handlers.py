@@ -98,8 +98,28 @@ class PaginatedHandler(TemplateHandler):
         return self.build_writes(items, params, template_text), None
 
 
-class NoOpHandler(TemplateHandler):
+class SzablonHandler(TemplateHandler):
+    """Dispatcher for {{Wikipedysta:WikiZEITBot/szablon|akcja=<x>}}.
+
+    Sub-handlers register themselves keyed by `akcja` value. Unrecognized or
+    missing `akcja` produces no writes — the page stays untouched.
+    """
+
     template_name = "Wikipedysta:WikiZEITBot/szablon"
 
+    def __init__(self):
+        self.sub_handlers = {}
+
+    def _sub(self, params):
+        return self.sub_handlers.get(params.get('akcja', '').lower())
+
     def handle(self, site, page, params, template_text, new_only=False):
-        return [], None
+        sub = self._sub(params)
+        if sub is None:
+            return [], None
+        return sub.handle(site, page, params, template_text, new_only=new_only)
+
+    def migrate(self, site, page, params, template_text):
+        sub = self._sub(params)
+        if sub is not None:
+            sub.migrate(site, page, params, template_text)
