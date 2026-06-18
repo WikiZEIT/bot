@@ -20,6 +20,7 @@ import argparse
 import logging
 import os
 import re
+from datetime import datetime
 
 import pywikibot
 
@@ -113,6 +114,15 @@ def persist_write(parent_page, write, width):
 
 
 def main(new_only=False, send_summary=False):
+    start = datetime.now()
+    flags = []
+    if new_only:
+        flags.append('--new-only')
+    if send_summary:
+        flags.append('--summary')
+    flags_str = ' '.join(flags) if flags else '(brak flag)'
+    pywikibot.output(f"==== START {start.isoformat(timespec='seconds')} {flags_str} ====")
+
     notif = NotificationManager(enabled=EMAIL_NOTIFICATIONS and not DEBUG)
     try:
         site = pywikibot.Site('pl', 'wikipedia')
@@ -169,7 +179,17 @@ def main(new_only=False, send_summary=False):
         notif.finish(send_email=send_summary)
     except Exception as exc:
         notif.send_failure(exc)
+        end = datetime.now()
+        pywikibot.output(
+            f"==== KONIEC {end.isoformat(timespec='seconds')} "
+            f"czas={end - start} BŁĄD ===="
+        )
         raise
+
+    end = datetime.now()
+    pywikibot.output(
+        f"==== KONIEC {end.isoformat(timespec='seconds')} czas={end - start} ===="
+    )
 
 
 if __name__ == '__main__':
