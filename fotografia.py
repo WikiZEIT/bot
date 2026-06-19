@@ -118,10 +118,14 @@ def fetch_uploads(users, limit):
 
 
 def render_user(user, files):
+    files_text = "\n".join(
+        f"File:{f}|<center>[[:commons:File:{f}|{f}]]</center>"
+        for f in files
+    )
     return (USER_TEMPLATE
             .replace('<user_url>', user.replace(' ', '_'))
             .replace('<user>', user)
-            .replace('<files>', "\n".join(f"File:{f}" for f in files)))
+            .replace('<files>', files_text))
 
 
 class FotografiaHandler(TemplateHandler):
