@@ -175,8 +175,8 @@ class FotografiaHandler(TemplateHandler):
             else:
                 inactive.append(entry)
 
-        active.sort(reverse=True)
-        inactive.sort(reverse=True)
+        active.sort(key=lambda entry: entry[1].casefold())
+        inactive.sort(key=lambda entry: entry[1].casefold())
 
         sections = []
         if active:
