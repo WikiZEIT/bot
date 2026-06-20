@@ -101,33 +101,70 @@ def make_end_marker(template_name):
     return f"<!-- /WikiZEITBot:{template_name} -->"
 
 
-def find_injection_site(page_text):
-    """Locate where the bot should inject content.
+def build_template_invocation(template_name, params):
+    if not params:
+        return f"{{{{{template_name}}}}}"
+    return f"{{{{{template_name}|" + '|'.join(f"{k}={v}" for k, v in params.items()) + "}}"
 
-    Returns (template_name, params, prefix, suffix). `prefix` is the text to
-    keep before the injection; `suffix` is the text to keep after. Markers
-    are preferred — they let users add content both before and after the
-    bot-managed block. If only a template is found (first run), the suffix
-    is empty: the bot claims everything from the template onward."""
-    begin = MARKER_BEGIN_RE.search(page_text)
-    if begin:
+
+def find_injection_site(page_text):
+    """Locate where the bot should inject content. Template is the source of
+    truth for params; markers delimit the bot-managed block.
+
+    Returns (template_name, params, prefix, suffix). The controller composes
+    the new page as `prefix + begin_marker + body + end_marker + suffix`,
+    inserting newlines between segments.
+
+    Five cases:
+      A. Template + matching begin/end markers — normal subsequent run.
+         prefix = text before begin marker (template + anything in between is
+         kept); suffix = text after end marker.
+      B. Template + begin marker only (no matching end) — legacy state /
+         partial write. prefix = text before begin marker; suffix discarded.
+      C. Template only, no markers — first run. prefix = text up to and
+         including the template; suffix = text after the template (preserved
+         verbatim — user content "below" the template is kept).
+      D. No template but a begin marker exists — migration: a previous
+         version of the bot removed the template. The template is
+         reconstructed from the marker's params and re-injected into prefix.
+         End-marker rules as in A/B.
+      E. Nothing matched — return None.
+    """
+    m = TEMPLATE_RE.search(page_text)
+    if m is not None:
+        template_name = m.group(1)
+        params = parse_params(m.group(2))
+        template_end = m.end()
+
+        begin = MARKER_BEGIN_RE.search(page_text, template_end)
+        if begin is None:
+            # Case C: first run, no markers yet.
+            return (template_name, params, page_text[:template_end], page_text[template_end:])
+
         end = MARKER_END_RE.search(page_text, begin.end())
         if end and end.group(1).lower() == begin.group(1).lower():
-            return (
-                begin.group(1),
-                parse_params(begin.group(2) or ''),
-                page_text[:begin.start()],
-                page_text[end.end():],
-            )
-    m = TEMPLATE_RE.search(page_text)
-    if m:
-        return (
-            m.group(1),
-            parse_params(m.group(2)),
-            page_text[:m.start()],
-            '',
-        )
-    return None
+            # Case A: normal subsequent run.
+            return (template_name, params, page_text[:begin.start()], page_text[end.end():])
+
+        # Case B: begin without end — replace from begin onwards.
+        return (template_name, params, page_text[:begin.start()], '')
+
+    # Case D: no template; try to recover from a stray marker.
+    begin = MARKER_BEGIN_RE.search(page_text)
+    if begin is None:
+        return None
+
+    template_name = begin.group(1)
+    params = parse_params(begin.group(2) or '')
+    restored_template = build_template_invocation(template_name, params)
+    prefix = page_text[:begin.start()] + restored_template
+
+    end = MARKER_END_RE.search(page_text, begin.end())
+    if end and end.group(1).lower() == begin.group(1).lower():
+        suffix = page_text[end.end():]
+    else:
+        suffix = ''
+    return (template_name, params, prefix, suffix)
 
 
 def format_index(index, width):
@@ -217,10 +254,15 @@ def main(new_only=False, send_summary=False, migrate=False):
                 all_ok = True
                 for write in writes:
                     if write.index == 1:
-                        wrapped = (
-                            f"{prefix}{begin_marker}\n{write.body}\n{end_marker}{suffix}"
-                        )
-                        write = dataclasses.replace(write, body=wrapped)
+                        prefix_clean = prefix.rstrip('\n')
+                        suffix_clean = suffix.lstrip('\n')
+                        parts = []
+                        if prefix_clean:
+                            parts.append(prefix_clean)
+                        parts.extend([begin_marker, write.body, end_marker])
+                        if suffix_clean:
+                            parts.append(suffix_clean)
+                        write = dataclasses.replace(write, body='\n'.join(parts))
                     try:
                         if persist_write(page, write, width):
                             notif.write_succeeded(page.title())

@@ -8,20 +8,30 @@ for a known template invocation on each page, dispatches by template name to the
 class, and writes the rendered result back to the page (using paginated subpages when the output
 is large).
 
-The bot-managed content on the main page is wrapped in HTML comment markers:
+The bot-managed content on the main page is wrapped in HTML comment markers placed **after** the
+template invocation:
 
 ```
-<!-- WikiZEITBot:<TemplateName>|<params> -->
+{{TemplateName|…params…}}
+<!-- WikiZEITBot:TemplateName|…params… -->
 …rendered content…
-<!-- /WikiZEITBot:<TemplateName> -->
+<!-- /WikiZEITBot:TemplateName -->
 ```
 
-On the first run, the bot replaces the `{{TemplateName|...}}` invocation with the begin marker,
-the rendered content, and the end marker. On every subsequent run, the bot only replaces the
-text *between* the markers. Anything you add **before the begin marker** or **after the end
-marker** is preserved across runs. Params for the handler are read from the begin marker on
-subsequent runs, so to change them either edit the begin marker directly or delete both markers
-to restart from a fresh `{{TemplateName|...}}` invocation. Subpages stay fully bot-managed
+- **First run:** the template stays put; the bot inserts the begin marker + content + end marker
+  on the next line. Any text before the template **and any text after the template** are
+  preserved.
+- **Subsequent runs:** the bot finds the template + matching markers and replaces only the
+  content between the markers. Text before the begin marker (including the template and any
+  notes you add between them) and text after the end marker are untouched.
+- **Begin marker without a matching end marker** (legacy / partial state): the bot replaces
+  everything from the begin marker to the end of the page, restoring the proper end marker.
+- **Template missing but markers exist** (a previous version of the bot removed the template):
+  the bot reconstructs the template invocation from the marker's params and re-injects it back
+  into the page, then proceeds with the normal flow. Self-healing — no manual restore needed.
+
+Params are always read from the template when it's present (the template is the authoritative
+source). Change params by editing the template, not the marker. Subpages stay fully bot-managed
 (no markers); they're created by the bot and aren't expected to host user content.
 
 ## Supported wiki-side templates
