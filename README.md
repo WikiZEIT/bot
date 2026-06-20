@@ -36,13 +36,31 @@ to restart from a fresh `{{TemplateName|...}}` invocation. Subpages stay fully b
   remainder is sorted by editcount. The list is split into subpages of
   `MenteesHandler.items_per_page` mentees each, named `<page>/2`, `/3`, … (padded to the width of
   the largest index).
-- **`{{Fotografia}}`** (optional `|limit=<n>|próg dni=<d>`) — gallery of the latest Commons
-  uploads for every Wikipedia photographer listed at `Wikiprojekt:Fotografia/Uczestnicy`. `limit`
-  is the per-user upload count (default `10`, capped at `20`). `próg dni` is the activity
-  threshold in days (default `90`): photographers whose most recent upload is within the window
-  go under `== Aktywni ==`; the rest go under `== Nieaktywni ==`. Both sections are sorted by
-  most-recent-upload descending. Files are fetched from the Wikimedia Commons SQL replica, so
-  this template only works on Toolforge.
+- **`{{Fotografia}}`** (all params optional: `fotograf`, `źródło`, `limit`, `nagłówek`,
+  `próg dni`) — gallery of the most recent Commons uploads. The user list comes from
+  `fotograf` (one or more usernames) or `źródło` (a wiki page to scrape). `fotograf` takes
+  precedence when both are set.
+  - **`fotograf=<user>`** — single user. With `nagłówek=<text>` adds `=== <text> ===` as an H3
+    header; without, just the bare gallery. No active/inactive split.
+  - **`fotograf=<user1>, <user2>, …`** — multi-user. Galleries render in the order typed, each
+    with the standard plainlinks-styled H3 header. `nagłówek` and `próg dni` are ignored.
+  - **`źródło=<page>`** (or omitted; default `Wikiprojekt:Fotografia/Uczestnicy`;
+    namespace-agnostic — `Wikipedia:Projekty_szkolne_i_akademickie/<projekt>`,
+    `Wikipedysta:<user>/galeria`, `Pomoc:<foo>`, etc. all work) — the page wikitext is scraped
+    for every `[[User:...]]`, `[[Wikipedysta:...]]`, or `[[:user:...]]` link (any context — tables,
+    lists, prose; `/Subpage` paths reduce to the bare username; duplicates deduped, first
+    occurrence wins). Photographers split into `== Aktywni ==` and `== Nieaktywni ==` sections
+    by `próg dni` (default `90` days); each user gets a plainlinks H3 header. Sections are
+    sorted alphabetically (case-fold).
+
+  If `źródło` is set but the page doesn't exist, the body becomes
+  `<!-- nie znaleziono strony źródłowej: <name> -->`. `limit` is the per-user upload count
+  (default `10`, capped at `100`). Users with no Commons uploads still get their H3 +
+  `<!-- brak zdjęć -->` comment in page and multi modes; in single mode the comment replaces
+  the gallery.
+
+  Files are fetched from the Wikimedia Commons SQL replica, so this template only works on
+  Toolforge.
 - **`{{Wikipedysta:WikiZEITBot/szablon}}`** — no-op test slot. The bot recognizes it and does
   nothing. Reserved for new handlers under development.
 

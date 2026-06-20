@@ -27,46 +27,69 @@ import pywikibot
 from handlers import PageWrite, TemplateHandler
 
 
-SOURCE_PAGE = 'Wikiprojekt:Fotografia/Uczestnicy'
+DEFAULT_SOURCE_PAGE = 'Wikiprojekt:Fotografia/Uczestnicy'
 
 COMMONS_HOST = 'commonswiki.analytics.db.svc.wikimedia.cloud'
 COMMONS_DB = 'commonswiki_p'
 REPLICA_CNF = os.path.expanduser('~/replica.my.cnf')
 
 DEFAULT_LIMIT = 10
-MAX_LIMIT = 20
+MAX_LIMIT = 100
 DEFAULT_THRESHOLD_DAYS = 90
 
-# Matches the first user link in a table row, e.g. `[[user:CLI|CLI]]` or
-# `[[Wikipedysta:Czupirek|czupirek]]`. Commons cross-wiki links like
-# `[[:w:commons:User:CLI/Gallery|...]]` don't match because they start with
-# `[[:` not `[[user`/`[[Wikipedysta`.
-USER_LINK_RE = re.compile(r'\[\[(?:user|Wikipedysta):([^|\]]+)', flags=re.I)
-ROW_SEP_RE = re.compile(r'\n\|-')
-
-USER_TEMPLATE = """=== <span class="plainlinks">[https://pl.wikipedia.org/wiki/User:<user_url> <user>]</span> ===
-<gallery>
-<files>
-</gallery>"""
+# Matches a User: / Wikipedysta: link anywhere in wikitext. Skips a leading
+# `:` (interwiki-style `[[:user:X]]`). Stops at `|`, `]`, or `/` so subpages
+# like `[[Wikipedysta:Foo/Brudnopis]]` reduce to the bare username `Foo`.
+USER_LINK_RE = re.compile(r'\[\[:?(?:user|Wikipedysta):([^|\]/]+)', flags=re.I)
 
 
-def fetch_photographers(site):
-    """Read SOURCE_PAGE, extract the first user link per table row, dedupe."""
-    page = pywikibot.Page(site, SOURCE_PAGE)
+def fetch_users_from_page(page):
+    """Extract all distinct User:/Wikipedysta: links from the page, preserving
+    first-occurrence order."""
     text = page.text
-
     users = []
     seen = set()
-    for row in ROW_SEP_RE.split(text):
-        m = USER_LINK_RE.search(row)
-        if not m:
-            continue
+    for m in USER_LINK_RE.finditer(text):
         name = m.group(1).strip().replace('_', ' ')
         if not name or name in seen:
             continue
         seen.add(name)
         users.append(name)
     return users
+
+
+def resolve_users(site, params):
+    """Return (mode, payload) based on `fotograf` and `źródło` params.
+
+    `fotograf` (one or more usernames) takes precedence over `źródło` (a wiki
+    page to scrape) when both are set. When neither is set, defaults to
+    scraping DEFAULT_SOURCE_PAGE.
+
+    Modes:
+      ('multi', [users])   — `fotograf` had multiple comma-separated names.
+      ('single', [user])   — `fotograf` had a single name.
+      ('page', [users])    — `źródło` (or default) scraped for user links.
+      ('error', name)      — `źródło` was set but the page doesn't exist;
+                             `name` is the requested page title.
+    """
+    fotograf = params.get('fotograf', '').strip()
+    if fotograf:
+        if ',' in fotograf:
+            seen = set()
+            names = []
+            for part in fotograf.split(','):
+                n = part.strip()
+                if n and n not in seen:
+                    seen.add(n)
+                    names.append(n)
+            return 'multi', names
+        return 'single', [fotograf]
+
+    source = params.get('źródło', '').strip() or DEFAULT_SOURCE_PAGE
+    src_page = pywikibot.Page(site, source)
+    if not src_page.exists():
+        return 'error', source
+    return 'page', fetch_users_from_page(src_page)
 
 
 def _canonical_username(name):
@@ -125,21 +148,36 @@ def fetch_uploads(users, limit):
     return result
 
 
-def render_user(user, files):
-    files_text = "\n".join(
+def render_user_header(user):
+    """Standard plainlinks-styled H3 header for a user."""
+    user_url = user.replace(' ', '_')
+    return (
+        f'=== <span class="plainlinks">'
+        f'[https://pl.wikipedia.org/wiki/User:{user_url} {user}]'
+        f'</span> ==='
+    )
+
+
+def render_gallery(files):
+    """Wiki gallery for the given files, or a no-uploads comment if empty."""
+    if not files:
+        return '<!-- brak zdjęć -->'
+    lines = "\n".join(
         f"File:{f}|<center>[[:commons:File:{f}|{f}]]</center>"
         for f in files
     )
-    return (USER_TEMPLATE
-            .replace('<user_url>', user.replace(' ', '_'))
-            .replace('<user>', user)
-            .replace('<files>', files_text))
+    return f"<gallery>\n{lines}\n</gallery>"
+
+
+def render_user_section(user, files):
+    """Per-user H3 header followed by gallery / empty-comment."""
+    return f"{render_user_header(user)}\n{render_gallery(files)}"
 
 
 class FotografiaHandler(TemplateHandler):
     template_name = "Fotografia"
 
-    def handle(self, site, page, params, new_only=False):
+    def _limit(self, params):
         raw = params.get('limit')
         try:
             limit = int(raw)
@@ -147,47 +185,74 @@ class FotografiaHandler(TemplateHandler):
                 limit = DEFAULT_LIMIT
         except (TypeError, ValueError):
             limit = DEFAULT_LIMIT
-        limit = min(limit, MAX_LIMIT)
+        return min(limit, MAX_LIMIT)
 
-        raw_threshold = params.get('próg dni')
+    def _threshold_days(self, params):
+        raw = params.get('próg dni')
         try:
-            threshold_days = int(raw_threshold)
-            if threshold_days <= 0:
-                threshold_days = DEFAULT_THRESHOLD_DAYS
+            d = int(raw)
+            if d <= 0:
+                d = DEFAULT_THRESHOLD_DAYS
         except (TypeError, ValueError):
-            threshold_days = DEFAULT_THRESHOLD_DAYS
+            d = DEFAULT_THRESHOLD_DAYS
+        return d
 
-        cutoff = (datetime.now(timezone.utc)
-                  - timedelta(days=threshold_days)).strftime('%Y%m%d%H%M%S')
+    def handle(self, site, page, params, new_only=False):
+        limit = self._limit(params)
+        mode, payload = resolve_users(site, params)
 
-        users = fetch_photographers(site)
+        if mode == 'error':
+            return [PageWrite(
+                index=1,
+                body=f"<!-- nie znaleziono strony źródłowej: {payload} -->",
+                summary=f"[WikiZEIT] {self.template_name}: brak strony źródłowej",
+                scope=self.template_name,
+            )], None
+
+        users = payload
         uploads = fetch_uploads(users, limit)
 
-        active = []
-        inactive = []
-        for user in users:
-            if user not in uploads:
-                continue
-            files, latest = uploads[user]
-            entry = (latest, user, files)
-            if latest >= cutoff:
-                active.append(entry)
+        if mode == 'page':
+            cutoff = (datetime.now(timezone.utc)
+                      - timedelta(days=self._threshold_days(params))).strftime('%Y%m%d%H%M%S')
+
+            active = []
+            inactive = []
+            for user in users:
+                files, latest = uploads.get(user, ([], None))
+                if latest and latest >= cutoff:
+                    active.append((user, files))
+                else:
+                    inactive.append((user, files))
+
+            active.sort(key=lambda x: x[0].casefold())
+            inactive.sort(key=lambda x: x[0].casefold())
+
+            sections = []
+            if active:
+                sections.append("== Aktywni ==\n" + "\n".join(
+                    render_user_section(u, f) for u, f in active
+                ))
+            if inactive:
+                sections.append("== Nieaktywni ==\n" + "\n".join(
+                    render_user_section(u, f) for u, f in inactive
+                ))
+            rendered = "\n".join(sections)
+
+        elif mode == 'multi':
+            rendered = "\n".join(
+                render_user_section(u, uploads.get(u, ([], None))[0])
+                for u in users
+            )
+
+        else:  # single
+            user = users[0]
+            files = uploads.get(user, ([], None))[0]
+            header = params.get('nagłówek', '').strip()
+            if header:
+                rendered = f"=== {header} ===\n{render_gallery(files)}"
             else:
-                inactive.append(entry)
-
-        active.sort(key=lambda entry: entry[1].casefold())
-        inactive.sort(key=lambda entry: entry[1].casefold())
-
-        sections = []
-        if active:
-            sections.append("== Aktywni ==\n" + "\n".join(
-                render_user(u, f) for _, u, f in active
-            ))
-        if inactive:
-            sections.append("== Nieaktywni ==\n" + "\n".join(
-                render_user(u, f) for _, u, f in inactive
-            ))
-        rendered = "\n".join(sections)
+                rendered = render_gallery(files)
 
         return [PageWrite(
             index=1,
