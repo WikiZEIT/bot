@@ -139,7 +139,7 @@ def render_user(user, files):
 class FotografiaHandler(TemplateHandler):
     template_name = "Fotografia"
 
-    def handle(self, site, page, params, template_text, new_only=False):
+    def handle(self, site, page, params, new_only=False):
         raw = params.get('limit')
         try:
             limit = int(raw)
@@ -189,10 +189,9 @@ class FotografiaHandler(TemplateHandler):
             ))
         rendered = "\n".join(sections)
 
-        body = f"{template_text}\n<!-- Wynik działania Bota -->\n{rendered}"
         return [PageWrite(
             index=1,
-            body=body,
+            body=rendered,
             summary=f"[WikiZEIT] Aktualizacja: {self.template_name}",
             scope=self.template_name,
         )], None

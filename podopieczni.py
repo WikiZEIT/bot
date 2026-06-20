@@ -186,12 +186,12 @@ class MenteesHandler(PaginatedHandler):
             pass
         return self.items_per_page
 
-    def handle(self, site, page, params, template_text, new_only=False):
+    def handle(self, site, page, params, new_only=False):
         mentor = params.get('przewodnik')
         if not mentor:
             return [PageWrite(
                 index=1,
-                body=f"{template_text}\n<!-- brak parametru: przewodnik -->",
+                body="<!-- brak parametru: przewodnik -->",
                 summary=f"[WikiZEIT] {self.template_name}: brak parametru przewodnik",
             )], None
 
@@ -207,7 +207,7 @@ class MenteesHandler(PaginatedHandler):
                     and self._outputs_exist(page, params, mentees)):
                 return [], None
 
-        writes = self.build_writes(mentees, params, template_text)
+        writes = self.build_writes(mentees, params)
 
         def commit():
             added, removed = db.update_mentor(mentor, params_dict, current_names)
@@ -222,7 +222,7 @@ class MenteesHandler(PaginatedHandler):
 
         return writes, commit
 
-    def migrate(self, site, page, params, template_text):
+    def migrate(self, site, page, params):
         mentor = params.get('przewodnik')
         if not mentor:
             return

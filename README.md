@@ -8,6 +8,22 @@ for a known template invocation on each page, dispatches by template name to the
 class, and writes the rendered result back to the page (using paginated subpages when the output
 is large).
 
+The bot-managed content on the main page is wrapped in HTML comment markers:
+
+```
+<!-- WikiZEITBot:<TemplateName>|<params> -->
+…rendered content…
+<!-- /WikiZEITBot:<TemplateName> -->
+```
+
+On the first run, the bot replaces the `{{TemplateName|...}}` invocation with the begin marker,
+the rendered content, and the end marker. On every subsequent run, the bot only replaces the
+text *between* the markers. Anything you add **before the begin marker** or **after the end
+marker** is preserved across runs. Params for the handler are read from the begin marker on
+subsequent runs, so to change them either edit the begin marker directly or delete both markers
+to restart from a fresh `{{TemplateName|...}}` invocation. Subpages stay fully bot-managed
+(no markers); they're created by the bot and aren't expected to host user content.
+
 ## Supported wiki-side templates
 
 - **`{{Podopieczni|przewodnik=<mentor>|limit=<n>|edycje=<k>}}`** — list mentees of the given

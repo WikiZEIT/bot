@@ -75,7 +75,59 @@ def build_template_regex(handlers):
     )
 
 
+def build_marker_regexes(handlers):
+    names = '|'.join(re.escape(h.template_name) for h in handlers)
+    begin = re.compile(
+        rf"<!--\s*WikiZEITBot:({names})(?:\|([^>]*?))?\s*-->",
+        flags=re.I,
+    )
+    end = re.compile(
+        rf"<!--\s*/WikiZEITBot:({names})\s*-->",
+        flags=re.I,
+    )
+    return begin, end
+
+
 TEMPLATE_RE = build_template_regex(HANDLERS)
+MARKER_BEGIN_RE, MARKER_END_RE = build_marker_regexes(HANDLERS)
+
+
+def make_begin_marker(template_name, params):
+    params_str = '|' + '|'.join(f"{k}={v}" for k, v in params.items()) if params else ''
+    return f"<!-- WikiZEITBot:{template_name}{params_str} -->"
+
+
+def make_end_marker(template_name):
+    return f"<!-- /WikiZEITBot:{template_name} -->"
+
+
+def find_injection_site(page_text):
+    """Locate where the bot should inject content.
+
+    Returns (template_name, params, prefix, suffix). `prefix` is the text to
+    keep before the injection; `suffix` is the text to keep after. Markers
+    are preferred — they let users add content both before and after the
+    bot-managed block. If only a template is found (first run), the suffix
+    is empty: the bot claims everything from the template onward."""
+    begin = MARKER_BEGIN_RE.search(page_text)
+    if begin:
+        end = MARKER_END_RE.search(page_text, begin.end())
+        if end and end.group(1).lower() == begin.group(1).lower():
+            return (
+                begin.group(1),
+                parse_params(begin.group(2) or ''),
+                page_text[:begin.start()],
+                page_text[end.end():],
+            )
+    m = TEMPLATE_RE.search(page_text)
+    if m:
+        return (
+            m.group(1),
+            parse_params(m.group(2)),
+            page_text[:m.start()],
+            '',
+        )
+    return None
 
 
 def format_index(index, width):
@@ -140,32 +192,35 @@ def main(new_only=False, send_summary=False, migrate=False):
             notif.page_processed()
             pywikibot.output(f"Przetwarzam stronę: {page.title()}")
             try:
-                m = TEMPLATE_RE.search(page.text)
-                if not m:
+                site_info = find_injection_site(page.text)
+                if site_info is None:
                     continue
 
-                template_name = m.group(1)
-                params = parse_params(m.group(2))
+                template_name, params, prefix, suffix = site_info
                 handler = HANDLERS_BY_NAME.get(template_name.lower())
                 if handler is None:
                     pywikibot.output(f"Nieznany szablon: {template_name!r}")
                     continue
 
                 if migrate:
-                    handler.migrate(site, page, params, m.group(0))
+                    handler.migrate(site, page, params)
                     continue
 
-                writes, commit = handler.handle(site, page, params, m.group(0), new_only=new_only)
+                writes, commit = handler.handle(site, page, params, new_only=new_only)
                 if not writes:
                     pywikibot.output(f"Pomijam (bez zmian): {page.title()}")
                     continue
 
-                prefix = page.text[:m.start()]
+                begin_marker = make_begin_marker(template_name, params)
+                end_marker = make_end_marker(template_name)
                 width = len(str(len(writes)))
                 all_ok = True
                 for write in writes:
-                    if write.index == 1 and prefix:
-                        write = dataclasses.replace(write, body=prefix + write.body)
+                    if write.index == 1:
+                        wrapped = (
+                            f"{prefix}{begin_marker}\n{write.body}\n{end_marker}{suffix}"
+                        )
+                        write = dataclasses.replace(write, body=wrapped)
                     try:
                         if persist_write(page, write, width):
                             notif.write_succeeded(page.title())

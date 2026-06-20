@@ -30,12 +30,14 @@ class PageWrite:
 class TemplateHandler:
     template_name: str = ""
 
-    def handle(self, site, page, params, template_text, new_only=False):
+    def handle(self, site, page, params, new_only=False):
         """Returns (writes, commit) where commit is None or a no-argument callable
-        that the controller invokes only after every write succeeds."""
+        that the controller invokes only after every write succeeds. The body of
+        each PageWrite holds the rendered content only — the controller wraps
+        the main-page write with begin/end markers + the page prefix/suffix."""
         raise NotImplementedError
 
-    def migrate(self, site, page, params, template_text):
+    def migrate(self, site, page, params):
         """Populate any persistent state from the current wiki state without
         producing writes. Default no-op for stateless handlers."""
         return
@@ -63,7 +65,7 @@ class PaginatedHandler(TemplateHandler):
     def get_subpage_prefix(self, params):
         return self.subpage_prefix
 
-    def build_writes(self, items, params, template_text):
+    def build_writes(self, items, params):
         per_page = self.get_items_per_page(params)
         chunks = [items[i:i + per_page]
                   for i in range(0, len(items), per_page)]
@@ -72,7 +74,7 @@ class PaginatedHandler(TemplateHandler):
         if not chunks:
             return [PageWrite(
                 index=1,
-                body=f"{template_text}\n<!-- brak wyników -->",
+                body="<!-- brak wyników -->",
                 summary=f"[WikiZEIT] {self.template_name}: brak wyników",
                 scope=scope,
             )]
@@ -80,7 +82,7 @@ class PaginatedHandler(TemplateHandler):
         prefix = self.get_subpage_prefix(params)
         writes = [PageWrite(
             index=1,
-            body=f"{template_text}\n<!-- Wynik działania Bota -->\n{self.render_chunk(chunks[0], params)}",
+            body=self.render_chunk(chunks[0], params),
             summary=f"[WikiZEIT] Aktualizacja: {self.template_name}",
             scope=scope,
         )]
@@ -93,9 +95,9 @@ class PaginatedHandler(TemplateHandler):
             ))
         return writes
 
-    def handle(self, site, page, params, template_text, new_only=False):
+    def handle(self, site, page, params, new_only=False):
         items = self.fetch_items(site, params)
-        return self.build_writes(items, params, template_text), None
+        return self.build_writes(items, params), None
 
 
 class SzablonHandler(TemplateHandler):
@@ -113,13 +115,13 @@ class SzablonHandler(TemplateHandler):
     def _sub(self, params):
         return self.sub_handlers.get(params.get('akcja', '').lower())
 
-    def handle(self, site, page, params, template_text, new_only=False):
+    def handle(self, site, page, params, new_only=False):
         sub = self._sub(params)
         if sub is None:
             return [], None
-        return sub.handle(site, page, params, template_text, new_only=new_only)
+        return sub.handle(site, page, params, new_only=new_only)
 
-    def migrate(self, site, page, params, template_text):
+    def migrate(self, site, page, params):
         sub = self._sub(params)
         if sub is not None:
-            sub.migrate(site, page, params, template_text)
+            sub.migrate(site, page, params)
