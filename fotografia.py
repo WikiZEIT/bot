@@ -18,6 +18,7 @@
 import os
 import re
 import unicodedata
+from datetime import datetime, timedelta, timezone
 
 import pymysql
 import pymysql.cursors
@@ -34,6 +35,7 @@ REPLICA_CNF = os.path.expanduser('~/replica.my.cnf')
 
 DEFAULT_LIMIT = 10
 MAX_LIMIT = 20
+DEFAULT_THRESHOLD_DAYS = 90
 
 # Matches the first user link in a table row, e.g. `[[user:CLI|CLI]]` or
 # `[[Wikipedysta:Czupirek|czupirek]]`. Commons cross-wiki links like
@@ -76,10 +78,11 @@ def _canonical_username(name):
 
 
 def fetch_uploads(users, limit):
-    """Return {user: [filenames]} of the `limit` most recent uploads per user
-    from the Wikimedia Commons SQL replica. Users with no uploads or no
-    Commons account simply don't appear in the result. The result dict keys
-    match the original `users` strings so the caller can map back."""
+    """Return {user: (files, latest_timestamp)} of the `limit` most recent
+    uploads per user from the Wikimedia Commons SQL replica. Users with no
+    uploads or no Commons account simply don't appear in the result. The
+    `latest_timestamp` is a 14-char MediaWiki UTC timestamp string of the
+    most-recent upload."""
     if not users:
         return {}
 
@@ -97,7 +100,7 @@ def fetch_uploads(users, limit):
                 db_name = _canonical_username(user).encode('utf-8')
                 cursor.execute(
                     """
-                    SELECT img_name
+                    SELECT img_name, img_timestamp
                     FROM image
                     JOIN actor ON actor.actor_id = image.img_actor
                     WHERE actor.actor_name = %s
@@ -106,12 +109,17 @@ def fetch_uploads(users, limit):
                     """,
                     (db_name, limit),
                 )
+                rows = cursor.fetchall()
+                if not rows:
+                    continue
                 files = [
                     row['img_name'].decode('utf-8').replace('_', ' ')
-                    for row in cursor.fetchall()
+                    for row in rows
                 ]
-                if files:
-                    result[user] = files
+                latest = rows[0]['img_timestamp']
+                if isinstance(latest, bytes):
+                    latest = latest.decode('utf-8')
+                result[user] = (files, latest)
     finally:
         conn.close()
     return result
@@ -141,11 +149,46 @@ class FotografiaHandler(TemplateHandler):
             limit = DEFAULT_LIMIT
         limit = min(limit, MAX_LIMIT)
 
+        raw_threshold = params.get('próg dni')
+        try:
+            threshold_days = int(raw_threshold)
+            if threshold_days <= 0:
+                threshold_days = DEFAULT_THRESHOLD_DAYS
+        except (TypeError, ValueError):
+            threshold_days = DEFAULT_THRESHOLD_DAYS
+
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(days=threshold_days)).strftime('%Y%m%d%H%M%S')
+
         users = fetch_photographers(site)
         uploads = fetch_uploads(users, limit)
 
-        sections = [render_user(u, uploads[u]) for u in users if u in uploads]
+        active = []
+        inactive = []
+        for user in users:
+            if user not in uploads:
+                continue
+            files, latest = uploads[user]
+            entry = (latest, user, files)
+            if latest >= cutoff:
+                active.append(entry)
+            else:
+                inactive.append(entry)
+
+        active.sort(reverse=True)
+        inactive.sort(reverse=True)
+
+        sections = []
+        if active:
+            sections.append("== Aktywni ==\n" + "\n".join(
+                render_user(u, f) for _, u, f in active
+            ))
+        if inactive:
+            sections.append("== Nieaktywni ==\n" + "\n".join(
+                render_user(u, f) for _, u, f in inactive
+            ))
         rendered = "\n".join(sections)
+
         body = f"{template_text}\n<!-- Wynik działania Bota -->\n{rendered}"
         return [PageWrite(
             index=1,
