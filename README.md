@@ -64,10 +64,20 @@ source). Change params by editing the template, not the marker. Subpages stay fu
     sorted alphabetically (case-fold).
 
   If `źródło` is set but the page doesn't exist, the body becomes
-  `<!-- nie znaleziono strony źródłowej: <name> -->`. `limit` is the per-user upload count
-  (default `10`, capped at `100`). Users with no Commons uploads still get their H3 +
-  `<!-- brak zdjęć -->` comment in page and multi modes; in single mode the comment replaces
-  the gallery.
+  `<!-- nie znaleziono strony źródłowej: <name> -->`.
+
+  `limit` applies in every mode and caps the per-user upload count (default `10`, max `100`).
+
+  `próg dni` only applies in `źródło` mode and only when the active/inactive split is on:
+  - `próg dni=<n>` (numeric, default `90`) — split into `== Aktywni ==` (last upload within
+    `n` days) and `== Nieaktywni ==` (older or no uploads).
+  - `próg dni=nie` — disable the split; render one flat alphabetical list of photographers
+    with no `== Aktywni ==` / `== Nieaktywni ==` headers.
+  - In `fotograf` (single/multi) modes, `próg dni` is always ignored — galleries are shown
+    regardless of how recently the user last uploaded.
+
+  Users with no Commons uploads still get their H3 + `<!-- brak zdjęć -->` comment in page and
+  multi modes; in single mode the comment replaces the gallery.
 
   Files are fetched from the Wikimedia Commons SQL replica, so this template only works on
   Toolforge.

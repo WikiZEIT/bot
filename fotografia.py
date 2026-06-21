@@ -177,15 +177,22 @@ def render_user_section(user, files):
 class FotografiaHandler(TemplateHandler):
     template_name = "Fotografia"
 
-    def _limit(self, params):
-        raw = params.get('limit')
+    def _resolve_limit(self, params):
+        """Per-user upload cap. Numeric values are capped at MAX_LIMIT;
+        anything else falls back to DEFAULT_LIMIT. Applies in every mode."""
+        raw = params.get('limit', '').strip()
         try:
-            limit = int(raw)
-            if limit <= 0:
-                limit = DEFAULT_LIMIT
+            n = int(raw)
+            if n <= 0:
+                return DEFAULT_LIMIT
+            return min(n, MAX_LIMIT)
         except (TypeError, ValueError):
-            limit = DEFAULT_LIMIT
-        return min(limit, MAX_LIMIT)
+            return DEFAULT_LIMIT
+
+    def _should_split(self, params):
+        """Active/inactive split (page mode only) is on by default;
+        `próg dni=nie` turns it off and produces a single flat list."""
+        return params.get('próg dni', '').strip().lower() != 'nie'
 
     def _threshold_days(self, params):
         raw = params.get('próg dni')
@@ -198,7 +205,6 @@ class FotografiaHandler(TemplateHandler):
         return d
 
     def handle(self, site, page, params, new_only=False):
-        limit = self._limit(params)
         mode, payload = resolve_users(site, params)
 
         if mode == 'error':
@@ -210,34 +216,42 @@ class FotografiaHandler(TemplateHandler):
             )], None
 
         users = payload
+        limit = self._resolve_limit(params)
         uploads = fetch_uploads(users, limit)
 
         if mode == 'page':
-            cutoff = (datetime.now(timezone.utc)
-                      - timedelta(days=self._threshold_days(params))).strftime('%Y%m%d%H%M%S')
+            if self._should_split(params):
+                cutoff = (datetime.now(timezone.utc)
+                          - timedelta(days=self._threshold_days(params))).strftime('%Y%m%d%H%M%S')
 
-            active = []
-            inactive = []
-            for user in users:
-                files, latest = uploads.get(user, ([], None))
-                if latest and latest >= cutoff:
-                    active.append((user, files))
-                else:
-                    inactive.append((user, files))
+                active = []
+                inactive = []
+                for user in users:
+                    files, latest = uploads.get(user, ([], None))
+                    if latest and latest >= cutoff:
+                        active.append((user, files))
+                    else:
+                        inactive.append((user, files))
 
-            active.sort(key=lambda x: x[0].casefold())
-            inactive.sort(key=lambda x: x[0].casefold())
+                active.sort(key=lambda x: x[0].casefold())
+                inactive.sort(key=lambda x: x[0].casefold())
 
-            sections = []
-            if active:
-                sections.append("== Aktywni ==\n" + "\n".join(
-                    render_user_section(u, f) for u, f in active
-                ))
-            if inactive:
-                sections.append("== Nieaktywni ==\n" + "\n".join(
-                    render_user_section(u, f) for u, f in inactive
-                ))
-            rendered = "\n".join(sections)
+                sections = []
+                if active:
+                    sections.append("== Aktywni ==\n" + "\n".join(
+                        render_user_section(u, f) for u, f in active
+                    ))
+                if inactive:
+                    sections.append("== Nieaktywni ==\n" + "\n".join(
+                        render_user_section(u, f) for u, f in inactive
+                    ))
+                rendered = "\n".join(sections)
+            else:
+                entries = [(u, uploads.get(u, ([], None))[0]) for u in users]
+                entries.sort(key=lambda x: x[0].casefold())
+                rendered = "\n".join(
+                    render_user_section(u, f) for u, f in entries
+                )
 
         elif mode == 'multi':
             rendered = "\n".join(
