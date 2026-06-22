@@ -47,7 +47,8 @@ source). Change params by editing the template, not the marker. Subpages stay fu
   `MenteesHandler.items_per_page` mentees each, named `<page>/2`, `/3`, … (padded to the width of
   the largest index).
 - **`{{Fotografia}}`** (all params optional: `fotograf`, `źródło`, `limit`, `nagłówek`,
-  `próg dni`, `nazwa pliku`, `mime`, `etykieta`) — gallery of the most recent Commons uploads.
+  `próg dni`, `nazwa pliku`, `mime`, `etykieta`, `attrybuty`) — gallery of the most recent
+  Commons uploads.
   The user list comes from `fotograf` (one or more usernames) or `źródło` (a wiki page to
   scrape). `fotograf` takes precedence when both are set.
   - **`fotograf=<user>`** — single user. With `nagłówek=<text>` adds `=== <text> ===` as an H3
@@ -89,6 +90,13 @@ source). Change params by editing the template, not the marker. Subpages stay fu
     form `{{token}}` are replaced with values from the SQL row; unknown tokens (including
     literal templates like `{{own}}`) are left untouched. Default:
     `<center>[[:commons:File:{{plik}}|{{plik}}]]</center>`.
+  - `attrybuty=<text>` — extra attributes added to the opening `<gallery>` tag. Empty by
+    default (tag stays as `<gallery>`, no trailing space). Example: `attrybuty=mode{{=}}packed`
+    → `<gallery mode=packed>`.
+
+  **Param-value escapes** (MediaWiki convention, recognized in every param):
+  - `{{=}}` → literal `=` (needed because the first `=` separates key from value).
+  - `{{!}}` → literal `|` (needed because `|` separates params at the top level).
 
   Available `etykieta` variables (Polish; English aliases also work — see `translations.json`):
 

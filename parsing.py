@@ -61,23 +61,51 @@ def find_template_in_text(start_re, text, start_pos=0):
     return None  # unterminated invocation
 
 
+_PLACEHOLDER_EQ = '\x00EQ\x00'
+_PLACEHOLDER_PIPE = '\x00PIPE\x00'
+
+
+def _mask_escapes(text):
+    """Swap MediaWiki-style escapes for NUL-bracketed placeholders so the
+    parser doesn't trip on the literal `=` / `|` they represent."""
+    return (text
+            .replace('{{=}}', _PLACEHOLDER_EQ)
+            .replace('{{!}}', _PLACEHOLDER_PIPE))
+
+
+def _unmask_escapes(text):
+    return (text
+            .replace(_PLACEHOLDER_EQ, '=')
+            .replace(_PLACEHOLDER_PIPE, '|'))
+
+
 def parse_params(params_str):
     """Split a template's params string on top-level `|`, then split each
     chunk on its first `=`. `|` and `=` are NOT treated as separators when
     they appear inside `{{...}}` or `[[...]]` — so an etykieta value like
-    `<center>[[:commons:File:{{plik}}|{{data}}]]</center>` survives intact."""
+    `<center>[[:commons:File:{{plik}}|{{data}}]]</center>` survives intact.
+
+    Two MediaWiki-style escapes are recognized anywhere in the params string
+    and replaced with their literal characters in the final key/value:
+      `{{=}}` → `=`
+      `{{!}}` → `|`
+    So `attrybuty=mode{{=}}packed` yields `{"attrybuty": "mode=packed"}` and
+    the `=` inside `{{=}}` is NOT mistaken for the key/value separator."""
     params = {}
     if not params_str:
         return params
+
+    # Mask escapes first so {{=}} and {{!}} can't act as separators below.
+    text = _mask_escapes(params_str)
 
     parts = []
     current = []
     depth_brace = 0
     depth_link = 0
     i = 0
-    while i < len(params_str):
-        two = params_str[i:i + 2]
-        ch = params_str[i]
+    while i < len(text):
+        two = text[i:i + 2]
+        ch = text[i]
         if two == '{{':
             depth_brace += 1
             current.append(two)
@@ -108,5 +136,5 @@ def parse_params(params_str):
         if '=' not in part:
             continue
         key, value = part.split('=', 1)
-        params[key.strip()] = value.strip()
+        params[_unmask_escapes(key).strip()] = _unmask_escapes(value).strip()
     return params

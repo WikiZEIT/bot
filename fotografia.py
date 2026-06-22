@@ -259,20 +259,23 @@ def render_user_header(user):
     )
 
 
-def render_gallery(file_rows, etykieta):
-    """Wiki gallery for the given files, or a no-uploads comment if empty."""
+def render_gallery(file_rows, etykieta, attrybuty=''):
+    """Wiki gallery for the given files, or a no-uploads comment if empty.
+    `attrybuty` is appended to the opening `<gallery>` tag as-is when set;
+    when empty, the tag stays as just `<gallery>` (no trailing space)."""
     if not file_rows:
         return '<!-- brak zdjęć -->'
     lines = "\n".join(
         f"File:{row['img_name']}|{substitute_etykieta(etykieta, row)}"
         for row in file_rows
     )
-    return f"<gallery>\n{lines}\n</gallery>"
+    opening = f"<gallery {attrybuty}>" if attrybuty else "<gallery>"
+    return f"{opening}\n{lines}\n</gallery>"
 
 
-def render_user_section(user, file_rows, etykieta):
+def render_user_section(user, file_rows, etykieta, attrybuty=''):
     """Per-user H3 header followed by gallery / empty-comment."""
-    return f"{render_user_header(user)}\n{render_gallery(file_rows, etykieta)}"
+    return f"{render_user_header(user)}\n{render_gallery(file_rows, etykieta, attrybuty)}"
 
 
 class FotografiaHandler(TemplateHandler):
@@ -321,6 +324,7 @@ class FotografiaHandler(TemplateHandler):
         name_regex = params.get('nazwa pliku', '').strip() or None
         mime_filter = params.get('mime', '').strip() or None
         etykieta = params.get('etykieta', '').strip() or DEFAULT_ETYKIETA
+        attrybuty = params.get('attrybuty', '').strip()
 
         uploads = fetch_uploads(users, limit, name_regex=name_regex, mime_filter=mime_filter)
 
@@ -344,23 +348,25 @@ class FotografiaHandler(TemplateHandler):
                 sections = []
                 if active:
                     sections.append("== Aktywni ==\n" + "\n".join(
-                        render_user_section(u, rows, etykieta) for u, rows in active
+                        render_user_section(u, rows, etykieta, attrybuty)
+                        for u, rows in active
                     ))
                 if inactive:
                     sections.append("== Nieaktywni ==\n" + "\n".join(
-                        render_user_section(u, rows, etykieta) for u, rows in inactive
+                        render_user_section(u, rows, etykieta, attrybuty)
+                        for u, rows in inactive
                     ))
                 rendered = "\n".join(sections)
             else:
                 entries = [(u, uploads.get(u, ([], None))[0]) for u in users]
                 entries.sort(key=lambda x: x[0].casefold())
                 rendered = "\n".join(
-                    render_user_section(u, rows, etykieta) for u, rows in entries
+                    render_user_section(u, rows, etykieta, attrybuty) for u, rows in entries
                 )
 
         elif mode == 'multi':
             rendered = "\n".join(
-                render_user_section(u, uploads.get(u, ([], None))[0], etykieta)
+                render_user_section(u, uploads.get(u, ([], None))[0], etykieta, attrybuty)
                 for u in users
             )
 
@@ -368,10 +374,8 @@ class FotografiaHandler(TemplateHandler):
             user = users[0]
             file_rows = uploads.get(user, ([], None))[0]
             header = params.get('nagłówek', '').strip()
-            if header:
-                rendered = f"=== {header} ===\n{render_gallery(file_rows, etykieta)}"
-            else:
-                rendered = render_gallery(file_rows, etykieta)
+            gallery = render_gallery(file_rows, etykieta, attrybuty)
+            rendered = f"=== {header} ===\n{gallery}" if header else gallery
 
         return [PageWrite(
             index=1,
