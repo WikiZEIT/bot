@@ -28,6 +28,11 @@ import pywikibot
 from fotografia import FotografiaHandler
 from handlers import SzablonHandler
 from notifications import NotificationManager
+from parsing import (
+    build_template_start_regex,
+    find_template_in_text,
+    parse_params,
+)
 from podopieczni import MenteesHandler
 
 
@@ -67,14 +72,6 @@ HANDLERS = [
 HANDLERS_BY_NAME = {h.template_name.lower(): h for h in HANDLERS}
 
 
-def build_template_regex(handlers):
-    names = '|'.join(re.escape(h.template_name) for h in handlers)
-    return re.compile(
-        rf"\{{\{{\s*({names})\s*(?:\|([^}}]*))?\s*\}}\}}",
-        flags=re.I,
-    )
-
-
 def build_marker_regexes(handlers):
     names = '|'.join(re.escape(h.template_name) for h in handlers)
     begin = re.compile(
@@ -88,8 +85,12 @@ def build_marker_regexes(handlers):
     return begin, end
 
 
-TEMPLATE_RE = build_template_regex(HANDLERS)
+TEMPLATE_START_RE = build_template_start_regex([h.template_name for h in HANDLERS])
 MARKER_BEGIN_RE, MARKER_END_RE = build_marker_regexes(HANDLERS)
+
+
+def find_template(text, start_pos=0):
+    return find_template_in_text(TEMPLATE_START_RE, text, start_pos)
 
 
 def make_begin_marker(template_name, params):
@@ -130,11 +131,10 @@ def find_injection_site(page_text):
          End-marker rules as in A/B.
       E. Nothing matched — return None.
     """
-    m = TEMPLATE_RE.search(page_text)
-    if m is not None:
-        template_name = m.group(1)
-        params = parse_params(m.group(2))
-        template_end = m.end()
+    template_match = find_template(page_text)
+    if template_match is not None:
+        template_name, params_text, _, template_end = template_match
+        params = parse_params(params_text)
 
         begin = MARKER_BEGIN_RE.search(page_text, template_end)
         if begin is None:
@@ -169,18 +169,6 @@ def find_injection_site(page_text):
 
 def format_index(index, width):
     return f"{index:0{width}d}"
-
-
-def parse_params(params_str):
-    params = {}
-    if not params_str:
-        return params
-    for part in params_str.split('|'):
-        if '=' not in part:
-            continue
-        key, value = part.split('=', 1)
-        params[key.strip()] = value.strip()
-    return params
 
 
 def persist_write(parent_page, write, width):

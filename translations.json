@@ -1,0 +1,27 @@
+{
+  "_comment": "Key = the {{token}} written in etykieta, value = canonical name. Canonical names may carry a ':format' suffix (date, iso) interpreted by fotografia.format_value().",
+  "pl": {
+    "plik": "img_name",
+    "rozmiar": "img_size",
+    "szerokość": "img_width",
+    "wysokość": "img_height",
+    "data": "img_timestamp:date",
+    "czas": "img_timestamp:iso",
+    "ts": "img_timestamp",
+    "sha1": "img_sha1",
+    "mime": "img_mime",
+    "autor": "actor_name"
+  },
+  "en": {
+    "filename": "img_name",
+    "size": "img_size",
+    "width": "img_width",
+    "height": "img_height",
+    "date": "img_timestamp:date",
+    "time": "img_timestamp:iso",
+    "ts": "img_timestamp",
+    "sha1": "img_sha1",
+    "mime": "img_mime",
+    "user": "actor_name"
+  }
+}

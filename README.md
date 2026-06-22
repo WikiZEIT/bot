@@ -47,9 +47,9 @@ source). Change params by editing the template, not the marker. Subpages stay fu
   `MenteesHandler.items_per_page` mentees each, named `<page>/2`, `/3`, … (padded to the width of
   the largest index).
 - **`{{Fotografia}}`** (all params optional: `fotograf`, `źródło`, `limit`, `nagłówek`,
-  `próg dni`) — gallery of the most recent Commons uploads. The user list comes from
-  `fotograf` (one or more usernames) or `źródło` (a wiki page to scrape). `fotograf` takes
-  precedence when both are set.
+  `próg dni`, `nazwa pliku`, `mime`, `etykieta`) — gallery of the most recent Commons uploads.
+  The user list comes from `fotograf` (one or more usernames) or `źródło` (a wiki page to
+  scrape). `fotograf` takes precedence when both are set.
   - **`fotograf=<user>`** — single user. With `nagłówek=<text>` adds `=== <text> ===` as an H3
     header; without, just the bare gallery. No active/inactive split.
   - **`fotograf=<user1>, <user2>, …`** — multi-user. Galleries render in the order typed, each
@@ -79,6 +79,35 @@ source). Change params by editing the template, not the marker. Subpages stay fu
   Users with no Commons uploads still get their H3 + `<!-- brak zdjęć -->` comment in page and
   multi modes; in single mode the comment replaces the gallery.
 
+  Filtering and caption params (orthogonal to the mode):
+  - `nazwa pliku=<regex>` — case-insensitive `REGEXP` substring search against `img_name` at
+    SQL level. Example: `nazwa pliku=\.jpe?g$` matches `.jpg`/`.jpeg` extensions; `nazwa pliku=Wzlot`
+    matches any file with `Wzlot` anywhere in the name.
+  - `mime=<type>` — exact MIME filter. `mime=image/jpeg` constrains both `img_major_mime` and
+    `img_minor_mime`; `mime=image` constrains only the major type.
+  - `etykieta=<wiki code>` — custom caption template for each gallery entry. Variables in the
+    form `{{token}}` are replaced with values from the SQL row; unknown tokens (including
+    literal templates like `{{own}}`) are left untouched. Default:
+    `<center>[[:commons:File:{{plik}}|{{plik}}]]</center>`.
+
+  Available `etykieta` variables (Polish; English aliases also work — see `translations.json`):
+
+  | Token | Source / format |
+  | --- | --- |
+  | `{{plik}}` / `{{filename}}` | `img_name` (spaces, no underscores) |
+  | `{{rozmiar}}` / `{{size}}` | `img_size` in bytes |
+  | `{{szerokość}}` / `{{width}}` | `img_width` in pixels |
+  | `{{wysokość}}` / `{{height}}` | `img_height` in pixels |
+  | `{{data}}` / `{{date}}` | upload date as `YYYY-MM-DD` |
+  | `{{czas}}` / `{{time}}` | upload time as ISO `YYYY-MM-DDTHH:MM:SSZ` |
+  | `{{ts}}` | raw 14-char MediaWiki timestamp |
+  | `{{sha1}}` | base36 hash |
+  | `{{mime}}` | `major/minor` (e.g. `image/jpeg`) |
+  | `{{autor}}` / `{{user}}` | uploader username |
+
+  Add a new language by appending another top-level key to `translations.json` and flipping
+  `LANG` at the top of `fotografia.py`.
+
   Files are fetched from the Wikimedia Commons SQL replica, so this template only works on
   Toolforge.
 - **`{{Wikipedysta:WikiZEITBot/szablon}}`** — no-op test slot. The bot recognizes it and does
@@ -102,6 +131,12 @@ source). Change params by editing the template, not the marker. Subpages stay fu
   mentee roster with `first_seen` / `last_seen`), `digest_meta` (last sent digest timestamp).
   `update_mentor(...)` atomically reconciles the roster and returns the `(added, removed)` sets.
 - `state.py` — legacy generic JSON store; currently unused, kept for reference.
+- `parsing.py` — `find_template_in_text` (brace-counting template locator) and `parse_params`
+  (top-level `|` / first `=` split that respects nested `{{...}}` and `[[...]]`). Pure stdlib;
+  unit-tested by `test_parsing.py` — `python -m unittest test_parsing.py`.
+- `translations.json` — per-language map from `etykieta` tokens (`plik`, `data`, …) to the
+  canonical SQL column / format key. Add a top-level key to add a language; switch by setting
+  `LANG` in `fotografia.py`.
 
 Adding a new template:
 
