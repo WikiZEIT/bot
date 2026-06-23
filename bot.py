@@ -74,8 +74,12 @@ HANDLERS_BY_NAME = {h.template_name.lower(): h for h in HANDLERS}
 
 def build_marker_regexes(handlers):
     names = '|'.join(re.escape(h.template_name) for h in handlers)
+    # `[\s\S]*?` (non-greedy any-char incl. newlines) lets the params body
+    # contain `>` — previously `[^>]*?` choked on etykieta values like
+    # `<center>...</center>` and the bot fell into first-run mode every cycle,
+    # piling up duplicate marker blocks on every save.
     begin = re.compile(
-        rf"<!--\s*WikiZEITBot:({names})(?:\|([^>]*?))?\s*-->",
+        rf"<!--\s*WikiZEITBot:({names})(?:\|([\s\S]*?))?\s*-->",
         flags=re.I,
     )
     end = re.compile(
@@ -94,8 +98,13 @@ def find_template(text, start_pos=0):
 
 
 def make_begin_marker(template_name, params):
-    params_str = '|' + '|'.join(f"{k}={v}" for k, v in params.items()) if params else ''
-    return f"<!-- WikiZEITBot:{template_name}{params_str} -->"
+    # Params are intentionally NOT serialized into the new marker — the
+    # template is preserved on the page and is the authoritative source of
+    # params. Keeping the marker simple sidesteps quoting headaches with `>`,
+    # `-->`, etc. that could appear in values like `etykieta=<center>…`.
+    # The reader regex (build_marker_regexes) still tolerates legacy markers
+    # that DO carry params, for backwards compatibility.
+    return f"<!-- WikiZEITBot:{template_name} -->"
 
 
 def make_end_marker(template_name):
@@ -141,12 +150,19 @@ def find_injection_site(page_text):
             # Case C: first run, no markers yet.
             return (template_name, params, page_text[:template_end], page_text[template_end:])
 
-        end = MARKER_END_RE.search(page_text, begin.end())
-        if end and end.group(1).lower() == begin.group(1).lower():
-            # Case A: normal subsequent run.
-            return (template_name, params, page_text[:begin.start()], page_text[end.end():])
+        # Pick the LAST matching end marker after the first begin marker.
+        # If past buggy runs stacked duplicate `begin … end | begin … end`
+        # blocks, this collapses them into a single replacement region.
+        last_end = None
+        for m in MARKER_END_RE.finditer(page_text, begin.end()):
+            if m.group(1).lower() == begin.group(1).lower():
+                last_end = m
 
-        # Case B: begin without end — replace from begin onwards.
+        if last_end is not None:
+            # Case A: normal subsequent run.
+            return (template_name, params, page_text[:begin.start()], page_text[last_end.end():])
+
+        # Case B: begin without any matching end — replace from begin onwards.
         return (template_name, params, page_text[:begin.start()], '')
 
     # Case D: no template; try to recover from a stray marker.
@@ -171,7 +187,7 @@ def format_index(index, width):
     return f"{index:0{width}d}"
 
 
-def persist_write(parent_page, write, width):
+def persist_write(parent_page, write, width, total_writes):
     if write.index == 1:
         page = parent_page
     else:
@@ -179,9 +195,24 @@ def persist_write(parent_page, write, width):
         page = pywikibot.Page(parent_page.site, title)
 
     if DEBUG:
-        debug_dir = os.path.join(DEBUG_DIR, write.scope) if write.scope else DEBUG_DIR
-        os.makedirs(debug_dir, exist_ok=True)
-        path = os.path.join(debug_dir, format_index(write.index, width))
+        scope_dir = os.path.join(DEBUG_DIR, write.scope) if write.scope else DEBUG_DIR
+        page_title = parent_page.title()
+        if total_writes == 1:
+            # Single-page output (e.g. Fotografia): file path mirrors the wiki
+            # page title; slashes become directories so the URL hierarchy is
+            # visible in the filesystem.
+            path = os.path.join(scope_dir, page_title)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+        else:
+            # Multi-page output (Podopieczni): nest main + subpages inside a
+            # directory named after the parent title so the main page doesn't
+            # clash with the subpage directory.
+            page_dir = os.path.join(scope_dir, page_title)
+            os.makedirs(page_dir, exist_ok=True)
+            if write.index == 1:
+                path = os.path.join(page_dir, '_main')
+            else:
+                path = os.path.join(page_dir, format_index(write.index, width))
         with open(path, 'w', encoding='utf-8') as f:
             f.write(write.body)
         pywikibot.output(f"[DEBUG] zapisano {path}")
@@ -239,6 +270,7 @@ def main(new_only=False, send_summary=False, migrate=False):
                 begin_marker = make_begin_marker(template_name, params)
                 end_marker = make_end_marker(template_name)
                 width = len(str(len(writes)))
+                total_writes = len(writes)
                 all_ok = True
                 for write in writes:
                     if write.index == 1:
@@ -252,7 +284,7 @@ def main(new_only=False, send_summary=False, migrate=False):
                             parts.append(suffix_clean)
                         write = dataclasses.replace(write, body='\n'.join(parts))
                     try:
-                        if persist_write(page, write, width):
+                        if persist_write(page, write, width, total_writes):
                             notif.write_succeeded(page.title())
                             pywikibot.output(
                                 f"Sukces! {page.title()} szablon={template_name} index={write.index}"
