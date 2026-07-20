@@ -36,11 +36,13 @@ source). Change params by editing the template, not the marker. Subpages stay fu
 
 ## Supported wiki-side templates
 
-- **`{{Podopieczni|przewodnik=<mentor>|limit=<n>|edycje=<k>}}`** — list mentees of the given
-  mentor. `przewodnik` is the mentor username (required); `limit` overrides the pagination size
-  (mentees per page, defaults to `MenteesHandler.items_per_page = 200`); `edycje` controls the
+- **`{{Podopieczni|przewodnik=<mentor>|limit=<n>|edycje=<k>|email=tak}}`** — list mentees of the
+  given mentor. `przewodnik` is the mentor username (required); `limit` overrides the pagination
+  size (mentees per page, defaults to `MenteesHandler.items_per_page = 200`); `edycje` controls the
   `limit=` passed to the per-mentee
-  `{{Specjalna:Wkład/...}}` transclusion (defaults to `5`). Blocked users and members of the
+  `{{Specjalna:Wkład/...}}` transclusion (defaults to `5`); `email=tak` opts the mentor into a
+  personal e-mail summary of their own new mentees on each `--summary` run (see
+  [Email notifications](#email-notifications)). Blocked users and members of the
   `editor`/`sysop` groups are filtered out. When `USE_SQL` is on, only mentees who edited within
   `LAST_EDIT_CUTOFF_DAYS` survive, sorted by last-edit timestamp (descending); otherwise the
   remainder is sorted by editcount. The list is split into subpages of
@@ -131,9 +133,11 @@ source). Change params by editing the template, not the marker. Subpages stay fu
   API or SQL, eligibility filter, render template).
 - `notifications.py` — `NotificationManager`: tracks per-run counters, appends each run to
   `~/state/notifications/runs.jsonl`, and when invoked with `--summary` reads the accumulated
-  log, mails a digest, and clears the file. Error emails (`send_failure`) are always sent
-  regardless of `--summary`. Only works on Toolforge (relies on the local Exim relay at
-  `localhost:25`).
+  log, mails a digest to the operator, sends per-mentor newcomer summaries to opted-in mentors
+  (`email=tak`) via MediaWiki's emailuser API, and clears the file. Error emails
+  (`send_failure`) are always sent regardless of `--summary`. The operator digest and error mail
+  rely on the local Exim relay (Toolforge only); the per-mentor mail goes through the wiki API.
+  Unit-tested by `test_notifications.py` — `python -m unittest test_notifications.py`.
 - `db.py` — SQLite store at `~/state/bot.db` (auto-created on first run). Tables:
   `mentor_params` (last seen template params per mentor), `mentee_membership` (per-mentor
   mentee roster with `first_seen` / `last_seen`), `digest_meta` (last sent digest timestamp).
@@ -238,6 +242,38 @@ pages exist; otherwise it re-renders and updates the DB. Each commit logs `Zmian
 
 The daily digest reads `mentee_membership.first_seen >= digest_meta.last_digest_time` and
 appends a "Nowi podopieczni" section listing newcomers per mentor since the previous digest.
+
+### Email notifications
+
+On a `--summary` run the operator always receives the full digest at `TO_ADDR`
+(`bot@wikizeit.edu.pl`). In addition, any mentor whose `{{Podopieczni}}` template carries
+`email=tak` receives their **own** message containing only their newcomers since the previous
+digest — never the operator digest, and never other mentors' data. Mentors without new mentees in
+a given digest are not contacted.
+
+These per-mentor messages are sent through MediaWiki's emailuser API
+(`pywikibot.User(site, mentor).send_email(...)`), so the bot never handles the mentor's address —
+Wikipedia relays the mail to whatever address the mentor confirmed. This requires that:
+
+- the bot account has a confirmed e-mail address, and
+- the mentor confirmed their e-mail and left *"Zezwalaj innym użytkownikom na wysyłanie do mnie
+  e-maili"* enabled.
+
+The per-mentor mails are sent **before** the operator digest is composed, and every outcome is
+reported back in the digest under a **`Powiadomienia e-mail do mentorów`** section, e.g.:
+
+```
+Powiadomienia e-mail do mentorów: 2 wysłane, 1 pominięte, 1 błędne
+  wysłane: Alice, Bob
+  pominięte: Carol (nie przyjmuje e-maili)
+  błędy: Dave (RuntimeError: ...)
+```
+
+so you can confirm from the summary alone that each mentor mail went out. Nothing here crashes the
+bot: a mentor who is not emailable (`isEmailable()` is `False`) is reported as *pominięte*, and any
+send error — including the bot account itself lacking a confirmed e-mail — is caught per mentor and
+reported as *błędne*. A failure to reach one mentor never blocks the others or the digest
+bookkeeping (log clearing / `last_digest_time` update).
 
 The `MenteesHandler` writes `~/state/podopieczni/<mentor>.json` after every successful run
 containing the current template params and a SHA-256 hash of the sorted eligible-mentee names.

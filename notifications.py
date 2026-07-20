@@ -22,6 +22,8 @@ import traceback
 from datetime import datetime
 from email.message import EmailMessage
 
+import pywikibot
+
 import db
 
 
@@ -31,6 +33,11 @@ SMTP_PORT = 25
 FROM_ADDR = 'tools.wikizeit-bot@toolforge.org'
 TO_ADDR = 'bot@wikizeit.edu.pl'
 SUBJECT_PREFIX = '[WikiZEITBot]'
+
+# Value of the `email` template param that opts a mentor into their own
+# per-mentor newcomer summary (sent via MediaWiki's emailuser API).
+EMAIL_OPTIN_VALUE = 'tak'
+MENTOR_SUBJECT = 'WikiZEIT: nowi podopieczni'
 
 LOG_DIR = os.path.expanduser('~/state/notifications')
 LOG_FILE = os.path.join(LOG_DIR, 'runs.jsonl')
@@ -44,6 +51,79 @@ def _send(subject, body):
     msg.set_content(body)
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
         smtp.send_message(msg)
+
+
+def email_optin(params):
+    """True if a mentor's stored template params carry the `email=tak` flag.
+
+    The check is case-insensitive and tolerant of surrounding whitespace, so
+    `Tak`, `TAK`, ` tak ` all opt in. Any other value — or a missing flag —
+    opts out."""
+    if not params:
+        return False
+    return str(params.get('email', '')).strip().lower() == EMAIL_OPTIN_VALUE
+
+
+def select_mentor_recipients(newcomers, get_params):
+    """Pick which mentors should receive their own newcomer summary.
+
+    `newcomers` is `{mentor: [mentee, ...]}` (as returned by
+    `db.get_newcomers_since`). `get_params` maps a mentor name to that mentor's
+    stored template params (typically `db.get_params`). Returns a list of
+    `(mentor, names)` for mentors that both opted in via `email=tak` and have
+    at least one newcomer this digest — nobody gets an empty summary."""
+    recipients = []
+    for mentor, names in newcomers.items():
+        if not names:
+            continue
+        if email_optin(get_params(mentor)):
+            recipients.append((mentor, names))
+    return recipients
+
+
+def format_mentor_summary(mentor, names, since):
+    """Render the plain-text body of a single mentor's newcomer summary."""
+    lines = [
+        f"Cześć {mentor},",
+        "",
+        f"Od {since} pojawiło się nowych podopiecznych: {len(names)}",
+        "",
+    ]
+    lines.extend(f"  - {name}" for name in names)
+    lines += [
+        "",
+        "Pełną listę znajdziesz na swojej stronie podopiecznych.",
+        "",
+        "--",
+        "Ta wiadomość została wysłana automatycznie przez bota WikiZEIT.",
+    ]
+    return '\n'.join(lines)
+
+
+def format_mentor_results(results):
+    """Render the operator-facing block that reports how the per-mentor emails
+    went. `results` is a list of `{'mentor', 'status', 'detail'}` dicts where
+    status is `sent` / `skipped` / `failed`. Returns `""` when nothing was
+    attempted, so the digest omits the section entirely."""
+    if not results:
+        return ""
+    sent = [r for r in results if r['status'] == 'sent']
+    skipped = [r for r in results if r['status'] == 'skipped']
+    failed = [r for r in results if r['status'] == 'failed']
+
+    lines = [
+        f"\nPowiadomienia e-mail do mentorów: "
+        f"{len(sent)} wysłane, {len(skipped)} pominięte, {len(failed)} błędne"
+    ]
+    if sent:
+        lines.append("  wysłane: " + ', '.join(r['mentor'] for r in sent))
+    if skipped:
+        lines.append("  pominięte: "
+                     + ', '.join(f"{r['mentor']} ({r['detail']})" for r in skipped))
+    if failed:
+        lines.append("  błędy: "
+                     + ', '.join(f"{r['mentor']} ({r['detail']})" for r in failed))
+    return '\n'.join(lines) + '\n'
 
 
 class NotificationManager:
@@ -101,7 +181,8 @@ class NotificationManager:
         if os.path.exists(LOG_FILE):
             os.remove(LOG_FILE)
 
-    def _format_digest(self, entries):
+    def _format_digest(self, entries, newcomers, since, newcomers_error=None,
+                       mentor_results=None):
         if not entries:
             return "Brak zarejestrowanych uruchomień."
 
@@ -135,16 +216,15 @@ class NotificationManager:
             for p in updated:
                 body += f"  - {p}\n"
 
-        try:
-            since = db.get_last_digest_time() or entries[0].get('started', '')
-            newcomers = db.get_newcomers_since(since) if since else {}
-            if newcomers:
-                total_new = sum(len(v) for v in newcomers.values())
-                body += f"\nNowi podopieczni od {since} ({total_new}):\n"
-                for mentor, names in newcomers.items():
-                    body += f"  {mentor} (+{len(names)}): {', '.join(names)}\n"
-        except Exception as e:
-            body += f"\n(Błąd przy pobieraniu nowych podopiecznych: {e})\n"
+        if newcomers_error is not None:
+            body += f"\n(Błąd przy pobieraniu nowych podopiecznych: {newcomers_error})\n"
+        elif newcomers:
+            total_new = sum(len(v) for v in newcomers.values())
+            body += f"\nNowi podopieczni od {since} ({total_new}):\n"
+            for mentor, names in newcomers.items():
+                body += f"  {mentor} (+{len(names)}): {', '.join(names)}\n"
+
+        body += format_mentor_results(mentor_results)
 
         if errors:
             body += "\nBłędy:\n"
@@ -152,14 +232,60 @@ class NotificationManager:
                 body += f"  - {when} {where}: {exc}\n"
         return body
 
-    def finish(self, send_email=False):
+    def _send_mentor_digests(self, site, newcomers, since):
+        """Send each opted-in mentor (via `email=tak`) their own newcomer
+        summary through MediaWiki's emailuser API.
+
+        Returns a list of `{'mentor', 'status', 'detail'}` outcomes (status is
+        `sent` / `skipped` / `failed`) so the operator digest can report what
+        happened. Per-mentor failures are isolated — one unreachable mentor
+        never blocks the rest, nor the surrounding digest bookkeeping."""
+        results = []
+        recipients = select_mentor_recipients(newcomers, db.get_params)
+        for mentor, names in recipients:
+            try:
+                user = pywikibot.User(site, mentor)
+                if not user.isEmailable():
+                    results.append({'mentor': mentor, 'status': 'skipped',
+                                    'detail': 'nie przyjmuje e-maili'})
+                    print(f"[notifications] Pominięto {mentor}: nie przyjmuje e-maili")
+                    continue
+                body = format_mentor_summary(mentor, names, since)
+                if user.send_email(MENTOR_SUBJECT, body):
+                    results.append({'mentor': mentor, 'status': 'sent',
+                                    'detail': f'{len(names)} nowych'})
+                    print(f"[notifications] Wysłano podsumowanie do {mentor} "
+                          f"({len(names)} nowych)")
+                else:
+                    results.append({'mentor': mentor, 'status': 'failed',
+                                    'detail': 'send_email zwróciło False'})
+                    print(f"[notifications] send_email zwróciło False dla {mentor}")
+            except Exception as e:
+                results.append({'mentor': mentor, 'status': 'failed',
+                                'detail': f'{type(e).__name__}: {e}'})
+                print(f"[notifications] Nie udało się wysłać e-maila do {mentor}: {e}")
+        return results
+
+    def finish(self, send_email=False, site=None):
         if not self.enabled:
             return
         self._append_log()
         if not send_email:
             return
         entries = self._read_log()
-        body = self._format_digest(entries)
+        since = db.get_last_digest_time() or (entries[0].get('started', '') if entries else '')
+        newcomers, newcomers_error = {}, None
+        if since:
+            try:
+                newcomers = db.get_newcomers_since(since)
+            except Exception as e:
+                newcomers_error = e
+        # Send the per-mentor emails first so their outcomes can be folded into
+        # the operator digest below.
+        mentor_results = []
+        if site is not None and newcomers_error is None and newcomers:
+            mentor_results = self._send_mentor_digests(site, newcomers, since)
+        body = self._format_digest(entries, newcomers, since, newcomers_error, mentor_results)
         try:
             _send("Podsumowanie", body)
             self._clear_log()

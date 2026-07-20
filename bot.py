@@ -306,7 +306,7 @@ def main(new_only=False, send_summary=False, migrate=False):
                 pywikibot.error(f"Błąd przy stronie {page.title()}: {exc}")
 
         if not migrate:
-            notif.finish(send_email=send_summary)
+            notif.finish(send_email=send_summary, site=site)
     except Exception as exc:
         notif.send_failure(exc)
         end = datetime.now()
