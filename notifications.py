@@ -81,15 +81,18 @@ def select_mentor_recipients(newcomers, get_params):
     return recipients
 
 
-def format_mentor_summary(mentor, names, since):
-    """Render the plain-text body of a single mentor's newcomer summary."""
+def format_mentor_summary(mentor, new_names, since):
+    """Render the plain-text body of a single mentor's newcomer summary — the
+    mentees added since the previous digest, same as the operator summary. The
+    full roster is deliberately NOT listed: a mentor can have thousands of
+    mentees, so the mail lists only the newcomers and links to the page."""
     lines = [
         f"Cześć {mentor},",
         "",
-        f"Od {since} pojawiło się nowych podopiecznych: {len(names)}",
+        f"Od {since} pojawiło się nowych podopiecznych: {len(new_names)}",
         "",
     ]
-    lines.extend(f"  - {name}" for name in names)
+    lines.extend(f"  - {name}" for name in new_names)
     lines += [
         "",
         "Pełną listę znajdziesz na swojej stronie podopiecznych.",

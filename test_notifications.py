@@ -84,16 +84,25 @@ class SelectMentorRecipientsTests(unittest.TestCase):
 
 
 class FormatMentorSummaryTests(unittest.TestCase):
-    def test_contains_mentor_names_and_count(self):
-        body = format_mentor_summary('Alice', ['Ann', 'Amy'], '2026-07-01T00:00:00+00:00')
+    SINCE = '2026-07-01T00:00:00+00:00'
+
+    def test_contains_newcomers_count_and_since(self):
+        body = format_mentor_summary('Alice', ['Ann', 'Amy'], self.SINCE)
         self.assertIn('Alice', body)
         self.assertIn('Ann', body)
         self.assertIn('Amy', body)
-        self.assertIn('2026-07-01T00:00:00+00:00', body)
+        self.assertIn(self.SINCE, body)
         self.assertIn('2', body)  # count of newcomers
 
+    def test_only_newcomers_listed_not_full_roster(self):
+        # The mail lists only the newcomers passed in — a mentor may have
+        # thousands of mentees, so the roster is intentionally left out.
+        body = format_mentor_summary('Alice', ['Ann'], self.SINCE)
+        self.assertIn('Ann', body)
+        self.assertNotIn('Old', body)
+
     def test_single_newcomer(self):
-        body = format_mentor_summary('Dave', ['Don'], '2026-07-01T00:00:00+00:00')
+        body = format_mentor_summary('Dave', ['Don'], self.SINCE)
         self.assertIn('Don', body)
 
 

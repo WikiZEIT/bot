@@ -247,9 +247,10 @@ appends a "Nowi podopieczni" section listing newcomers per mentor since the prev
 
 On a `--summary` run the operator always receives the full digest at `TO_ADDR`
 (`bot@wikizeit.edu.pl`). In addition, any mentor whose `{{Podopieczni}}` template carries
-`email=tak` receives their **own** message containing only their newcomers since the previous
-digest — never the operator digest, and never other mentors' data. Mentors without new mentees in
-a given digest are not contacted.
+`email=tak` receives their **own** message listing only their newcomers since the previous digest
+(same as the operator summary) — never the operator digest, and never other mentors' data. The
+full roster is deliberately left out (a mentor may have thousands of mentees); the mail links to
+the mentor's page instead. Mentors without new mentees in a given digest are not contacted.
 
 These per-mentor messages are sent through MediaWiki's emailuser API
 (`pywikibot.User(site, mentor).send_email(...)`), so the bot never handles the mentor's address —
