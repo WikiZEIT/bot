@@ -188,7 +188,12 @@ full `user@suffix` login:
 
 The BotPassword must grant *Edit existing pages*, *Create, edit, and move pages*, and *High-volume
 editing* (without the last grant pywikibot logs a `'bot' right wasn't activated` warning and edits
-don't get the bot flag).
+don't get the bot flag). For the per-mentor email feature (`email=tak`, see
+[Email notifications](#email-notifications)) it must **also** grant *Send email to other users*
+(`sendemail`) — a BotPassword's effective rights are the intersection of the account's rights and
+the ticked grants, so without it the emailuser API returns *"You don't have permission to send
+mail"*. In addition, the `WikiZEITBot` account itself must have a **confirmed email address**
+(`Specjalna:Preferencje`); the API refuses to send from an account without one.
 
 ## Running
 
