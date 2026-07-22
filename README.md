@@ -310,6 +310,33 @@ Keep `user-config.py` and `user-password.py` in `/data/project/wikizeit-bot/` (o
 and pass `--env PYWIKIBOT_DIR=/data/project/wikizeit-bot` to the jobs command so pywikibot finds
 them.
 
+### Continuous deployment
+
+`.github/workflows/deploy.yaml` runs on every push and pull request to `master`:
+
+1. **test** — installs `requirements.txt` on Python 3.11 (matching the Toolforge image) and runs
+   `python -m unittest test_parsing.py test_notifications.py`. `PYWIKIBOT_NO_USER_CONFIG=1` is set
+   because `notifications.py` imports `pywikibot` at load time and CI has no `user-config.py`.
+2. **deploy** — `needs: test`, so it only runs when the tests pass, and only on `master`. It SSHes
+   into the Toolforge bastion and, as the tool account, pulls the latest code (`git pull --ff-only`)
+   and reinstalls dependencies (`$HOME/pvenv/bin/pip install -r requirements.txt`). A failing test
+   blocks the deploy entirely.
+
+Configure these repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+| --- | --- |
+| `SSH_SERVER` | `login.toolforge.org` |
+| `SSH_USER` | your Wikitech shell username (a maintainer of the `wikizeit-bot` tool) |
+| `SSH_PRIVATE_KEY` | a private key whose public half is on that Wikitech account |
+| `SSH_PORT` | `22` |
+| `SSH_PATH` | `/data/project/wikizeit-bot/bot` (the repo checkout) |
+
+Both commands run as the tool account via `become` (in a single `bash -lc` so `$HOME` resolves to
+the tool's home), keeping the checkout owned by `tools.wikizeit-bot`. `--ff-only` makes the deploy
+fail loudly rather than create a merge commit if the checkout has diverged. Dependencies are
+reinstalled from `requirements.txt` on every deploy, so a change there is picked up automatically.
+
 ## License
 
 Copyright (C) 2026 [Jakub T. Jankiewicz](https://jakub.jankiewicz.org/)
