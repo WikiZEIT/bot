@@ -1,4 +1,4 @@
-name: Test and Deploy to Toolforge
+name: CI/CD
 
 on:
   push:
