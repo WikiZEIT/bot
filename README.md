@@ -1,5 +1,9 @@
 # WikiZEIT Bot
 
+[![CD/CD](https://github.com/WikiZEIT/bot/actions/workflows/deploy.yaml/badge.svg)](https://github.com/WikiZEIT/bot/actions/workflows/deploy.yaml)
+[![Offical website](https://img.shields.io/badge/offical-website-yellow)](https://wikizeit.edu.pl/projekty/wikizeitbot/)
+[![HTMLMinifier GitHub repo](https://img.shields.io/badge/github-WikiZEITbot-orange?logo=github)](https://github.com/WikiZEIT/bot/)
+
 A [pywikibot](https://www.mediawiki.org/wiki/Manual:Pywikibot)-based bot for the Polish Wikipedia,
 running as [WikiZEITBot](https://pl.wikipedia.org/wiki/Wikipedysta:WikiZEITBot).
 
