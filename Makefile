@@ -7,7 +7,7 @@
 .PHONY: test lint install
 
 test:
-	PYWIKIBOT_NO_USER_CONFIG=1 python -m unittest test_parsing.py test_notifications.py
+	PYWIKIBOT_NO_USER_CONFIG=1 python -m unittest test_parsing.py test_notifications.py test_db.py
 
 lint:
 	ruff check .

@@ -30,7 +30,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS mentor_params (
     mentor TEXT PRIMARY KEY,
     params_json TEXT,
-    updated TEXT
+    updated TEXT,
+    page_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS mentee_membership (
@@ -55,6 +56,14 @@ def _now():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
+def _migrate(conn):
+    """Bring an existing database up to the current schema. CREATE TABLE IF NOT
+    EXISTS leaves older tables untouched, so add columns introduced later."""
+    cols = {row['name'] for row in conn.execute("PRAGMA table_info(mentor_params)")}
+    if 'page_url' not in cols:
+        conn.execute("ALTER TABLE mentor_params ADD COLUMN page_url TEXT")
+
+
 @contextmanager
 def connect():
     os.makedirs(DB_DIR, exist_ok=True)
@@ -62,6 +71,7 @@ def connect():
     conn.row_factory = sqlite3.Row
     try:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         yield conn
         conn.commit()
     except Exception:
@@ -91,7 +101,8 @@ def get_mentee_set(mentor):
         return {row['mentee'] for row in rows}
 
 
-def update_mentor(mentor, params, current_mentees, first_seen_override=None):
+def update_mentor(mentor, params, current_mentees, first_seen_override=None,
+                  page_url=None):
     """Update the mentor's params and reconcile mentee_membership rows.
 
     Returns (added, removed) sets — names new to this run and names no longer
@@ -99,6 +110,10 @@ def update_mentor(mentor, params, current_mentees, first_seen_override=None):
 
     `first_seen_override` lets the migration backfill rows with a sentinel
     timestamp (e.g. epoch) so they don't appear as newcomers in the next digest.
+
+    `page_url` is the full URL of the wiki page the template was found on; it is
+    stored so per-mentor emails can link to the actual mentee-list page rather
+    than a manually constructed one.
     """
     now = _now()
     first_seen = first_seen_override or now
@@ -134,12 +149,22 @@ def update_mentor(mentor, params, current_mentees, first_seen_override=None):
             )
 
         conn.execute(
-            "INSERT OR REPLACE INTO mentor_params (mentor, params_json, updated) "
-            "VALUES (?, ?, ?)",
-            (mentor, json.dumps(params, sort_keys=True), now),
+            "INSERT OR REPLACE INTO mentor_params (mentor, params_json, updated, page_url) "
+            "VALUES (?, ?, ?, ?)",
+            (mentor, json.dumps(params, sort_keys=True), now, page_url),
         )
 
     return added, removed
+
+
+def get_page_url(mentor):
+    """Return the stored wiki page URL for a mentor, or None if unknown."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT page_url FROM mentor_params WHERE mentor = ?",
+            (mentor,),
+        ).fetchone()
+        return row['page_url'] if row else None
 
 
 def get_newcomers_since(timestamp):

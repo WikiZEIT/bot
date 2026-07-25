@@ -210,7 +210,8 @@ class MenteesHandler(PaginatedHandler):
         writes = self.build_writes(mentees, params)
 
         def commit():
-            added, removed = db.update_mentor(mentor, params_dict, current_names)
+            added, removed = db.update_mentor(
+                mentor, params_dict, current_names, page_url=page.full_url())
             if added or removed:
                 pywikibot.output(
                     f"Zmiany u {mentor}: +{len(added)} nowych, -{len(removed)} odeszło"
@@ -233,6 +234,7 @@ class MenteesHandler(PaginatedHandler):
             dict(params),
             current_names,
             first_seen_override='1970-01-01T00:00:00+00:00',
+            page_url=page.full_url(),
         )
         pywikibot.output(f"Migracja {mentor}: zapisano {len(added)} podopiecznych")
 

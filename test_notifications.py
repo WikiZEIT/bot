@@ -18,6 +18,7 @@ from unittest import mock
 import notifications
 from notifications import (
     NotificationManager,
+    contribs_url,
     email_optin,
     format_mentor_results,
     format_mentor_summary,
@@ -85,9 +86,10 @@ class SelectMentorRecipientsTests(unittest.TestCase):
 
 class FormatMentorSummaryTests(unittest.TestCase):
     SINCE = '2026-07-01T00:00:00+00:00'
+    PAGE_URL = 'https://pl.wikipedia.org/wiki/Pomoc:Przewodnicy/Podopieczni/Jcubic'
 
     def test_contains_newcomers_count_and_since(self):
-        body = format_mentor_summary('Alice', ['Ann', 'Amy'], self.SINCE)
+        body = format_mentor_summary('Alice', ['Ann', 'Amy'], self.SINCE, self.PAGE_URL)
         self.assertIn('Alice', body)
         self.assertIn('Ann', body)
         self.assertIn('Amy', body)
@@ -97,13 +99,46 @@ class FormatMentorSummaryTests(unittest.TestCase):
     def test_only_newcomers_listed_not_full_roster(self):
         # The mail lists only the newcomers passed in — a mentor may have
         # thousands of mentees, so the roster is intentionally left out.
-        body = format_mentor_summary('Alice', ['Ann'], self.SINCE)
+        body = format_mentor_summary('Alice', ['Ann'], self.SINCE, self.PAGE_URL)
         self.assertIn('Ann', body)
         self.assertNotIn('Old', body)
 
     def test_single_newcomer(self):
-        body = format_mentor_summary('Dave', ['Don'], self.SINCE)
+        body = format_mentor_summary('Dave', ['Don'], self.SINCE, self.PAGE_URL)
         self.assertIn('Don', body)
+
+    def test_includes_contribs_url_per_newcomer(self):
+        body = format_mentor_summary('Alice', ['Ann', 'Amy'], self.SINCE, self.PAGE_URL)
+        self.assertIn('https://pl.wikipedia.org/wiki/Specjalna:Wkład/Ann', body)
+        self.assertIn('https://pl.wikipedia.org/wiki/Specjalna:Wkład/Amy', body)
+
+    def test_name_then_url_line_format(self):
+        # Each newcomer: a name line, then a `* <url>` line beneath it.
+        body = format_mentor_summary('Alice', ['Ann'], self.SINCE, self.PAGE_URL)
+        self.assertIn('Ann\n* https://pl.wikipedia.org/wiki/Specjalna:Wkład/Ann', body)
+
+    def test_uses_provided_page_url_verbatim(self):
+        # The mentee-list link is the actual page URL, not a constructed one.
+        body = format_mentor_summary('jcubic', ['Ann'], self.SINCE, self.PAGE_URL)
+        self.assertIn(f'* {self.PAGE_URL}', body)
+
+    def test_no_page_url_omits_list_link(self):
+        body = format_mentor_summary('jcubic', ['Ann'], self.SINCE, None)
+        self.assertNotIn('Pełną listę', body)
+
+
+class ContribsUrlTests(unittest.TestCase):
+    def test_simple_name(self):
+        self.assertEqual(
+            contribs_url('Jcubic'),
+            'https://pl.wikipedia.org/wiki/Specjalna:Wkład/Jcubic',
+        )
+
+    def test_spaces_become_underscores(self):
+        self.assertEqual(
+            contribs_url('Jan Kowalski'),
+            'https://pl.wikipedia.org/wiki/Specjalna:Wkład/Jan_Kowalski',
+        )
 
 
 class FakeUser:
@@ -130,6 +165,7 @@ class FakeUser:
 
 EMAILABLE = {}
 STORED_PARAMS = {}
+STORED_PAGE_URL = {}  # mentor -> mentee-list page URL
 SEND_OUTCOME = {}  # mentor -> True / False / Exception instance
 
 
@@ -138,12 +174,14 @@ class SendMentorDigestsTests(unittest.TestCase):
         FakeUser.sent = []
         EMAILABLE.clear()
         STORED_PARAMS.clear()
+        STORED_PAGE_URL.clear()
         SEND_OUTCOME.clear()
 
     def _run(self, newcomers, since='2026-07-01T00:00:00+00:00'):
         manager = NotificationManager(enabled=True)
         with mock.patch.object(notifications.pywikibot, 'User', FakeUser), \
-             mock.patch.object(notifications.db, 'get_params', STORED_PARAMS.get):
+             mock.patch.object(notifications.db, 'get_params', STORED_PARAMS.get), \
+             mock.patch.object(notifications.db, 'get_page_url', STORED_PAGE_URL.get):
             results = manager._send_mentor_digests(
                 site=object(), newcomers=newcomers, since=since)
         return manager, results
@@ -156,6 +194,7 @@ class SendMentorDigestsTests(unittest.TestCase):
 
     def test_opted_in_emailable_mentor_receives_summary(self):
         STORED_PARAMS['Alice'] = {'email': 'tak'}
+        STORED_PAGE_URL['Alice'] = 'https://pl.wikipedia.org/wiki/Pomoc:Przewodnicy/Podopieczni/Alice'
         EMAILABLE['Alice'] = True
         _, results = self._run({'Alice': ['Ann', 'Amy']})
         self.assertEqual(len(FakeUser.sent), 1)
@@ -164,6 +203,7 @@ class SendMentorDigestsTests(unittest.TestCase):
         self.assertEqual(subject, notifications.MENTOR_SUBJECT)
         self.assertIn('Ann', text)
         self.assertIn('Amy', text)
+        self.assertIn(STORED_PAGE_URL['Alice'], text)  # page URL from the DB
         self.assertEqual(self._status(results, 'Alice'), 'sent')
 
     def test_opted_out_mentor_not_contacted(self):

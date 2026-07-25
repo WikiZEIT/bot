@@ -39,6 +39,10 @@ SUBJECT_PREFIX = '[WikiZEITBot]'
 EMAIL_OPTIN_VALUE = 'tak'
 MENTOR_SUBJECT = 'WikiZEIT: nowi podopieczni'
 
+# Link to a user's contributions (edit history). Spaces in the username become
+# underscores, as MediaWiki page URLs require.
+CONTRIBS_URL = 'https://pl.wikipedia.org/wiki/Specjalna:Wkład/{user}'
+
 LOG_DIR = os.path.expanduser('~/state/notifications')
 LOG_FILE = os.path.join(LOG_DIR, 'runs.jsonl')
 
@@ -81,22 +85,36 @@ def select_mentor_recipients(newcomers, get_params):
     return recipients
 
 
-def format_mentor_summary(mentor, new_names, since):
+def contribs_url(name):
+    """URL of a user's contributions (edit history) on pl.wikipedia."""
+    return CONTRIBS_URL.format(user=name.replace(' ', '_'))
+
+
+def format_mentor_summary(mentor, new_names, since, page_url):
     """Render the plain-text body of a single mentor's newcomer summary — the
-    mentees added since the previous digest, same as the operator summary. The
+    mentees added since the previous digest, same as the operator summary. Each
+    newcomer is followed by a link to their contributions (edit history). The
     full roster is deliberately NOT listed: a mentor can have thousands of
-    mentees, so the mail lists only the newcomers and links to the page."""
+    mentees, so the mail links to `page_url` — the actual mentee-list page the
+    bot processed (omitted if unknown)."""
     lines = [
         f"Cześć {mentor},",
         "",
         f"Od {since} pojawiło się nowych podopiecznych: {len(new_names)}",
         "",
     ]
-    lines.extend(f"  - {name}" for name in new_names)
+    for name in new_names:
+        lines.append(name)
+        lines.append(f"* {contribs_url(name)}")
+        lines.append("")
+    if page_url:
+        lines += [
+            "Pełną listę znajdziesz na swojej stronie podopiecznych:",
+            "",
+            f"* {page_url}",
+            "",
+        ]
     lines += [
-        "",
-        "Pełną listę znajdziesz na swojej stronie podopiecznych.",
-        "",
         "--",
         "Ta wiadomość została wysłana automatycznie przez bota WikiZEIT.",
     ]
@@ -253,7 +271,7 @@ class NotificationManager:
                                     'detail': 'nie przyjmuje e-maili'})
                     print(f"[notifications] Pominięto {mentor}: nie przyjmuje e-maili")
                     continue
-                body = format_mentor_summary(mentor, names, since)
+                body = format_mentor_summary(mentor, names, since, db.get_page_url(mentor))
                 if user.send_email(MENTOR_SUBJECT, body):
                     results.append({'mentor': mentor, 'status': 'sent',
                                     'detail': f'{len(names)} nowych'})

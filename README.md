@@ -142,8 +142,10 @@ source). Change params by editing the template, not the marker. Subpages stay fu
   (`send_failure`) are always sent regardless of `--summary`. The operator digest and error mail
   rely on the local Exim relay (Toolforge only); the per-mentor mail goes through the wiki API.
   Unit-tested by `test_notifications.py` — `python -m unittest test_notifications.py`.
-- `db.py` — SQLite store at `~/state/bot.db` (auto-created on first run). Tables:
-  `mentor_params` (last seen template params per mentor), `mentee_membership` (per-mentor
+- `db.py` — SQLite store at `~/state/bot.db` (auto-created on first run; `_migrate` adds later
+  columns to pre-existing databases). Tables:
+  `mentor_params` (last seen template params per mentor, plus the `page_url` of the page the
+  template was found on), `mentee_membership` (per-mentor
   mentee roster with `first_seen` / `last_seen`), `digest_meta` (last sent digest timestamp).
   `update_mentor(...)` atomically reconciles the roster and returns the `(added, removed)` sets.
 - `state.py` — legacy generic JSON store; currently unused, kept for reference.
@@ -257,9 +259,14 @@ appends a "Nowi podopieczni" section listing newcomers per mentor since the prev
 On a `--summary` run the operator always receives the full digest at `TO_ADDR`
 (`bot@wikizeit.edu.pl`). In addition, any mentor whose `{{Podopieczni}}` template carries
 `email=tak` receives their **own** message listing only their newcomers since the previous digest
-(same as the operator summary) — never the operator digest, and never other mentors' data. The
-full roster is deliberately left out (a mentor may have thousands of mentees); the mail links to
-the mentor's page instead. Mentors without new mentees in a given digest are not contacted.
+(same as the operator summary) — never the operator digest, and never other mentors' data. Each
+newcomer is listed with a link to their contributions/edit history
+(`https://pl.wikipedia.org/wiki/Specjalna:Wkład/<user>`). The full roster is deliberately left out
+(a mentor may have thousands of mentees); instead the mail links to the mentor's mentee-list page.
+That link is the **actual URL** of the page the template was found on — captured via
+`page.full_url()` during category iteration and stored in `mentor_params.page_url` — not a
+manually built one, so it stays correct regardless of where the page lives. Mentors without new
+mentees in a given digest are not contacted.
 
 These per-mentor messages are sent through MediaWiki's emailuser API
 (`pywikibot.User(site, mentor).send_email(...)`), so the bot never handles the mentor's address —

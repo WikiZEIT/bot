@@ -1,0 +1,12 @@
+# Paths excluded from linting (in addition to ruff's defaults):
+#   - pywikibot secret configs, which reference globals injected at runtime
+#     (BotPassword, usernames, ...) and can't be linted standalone;
+#   - the read-only tmp/ design references;
+#   - leftover scratch experiments.
+# Project source and the test suite are still linted.
+extend-exclude = [
+    "tmp",
+    "user-config.py",
+    "user-password.py",
+    "test.py",
+]
