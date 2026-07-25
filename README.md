@@ -142,8 +142,13 @@ source). Change params by editing the template, not the marker. Subpages stay fu
   (`send_failure`) are always sent regardless of `--summary`. The operator digest and error mail
   rely on the local Exim relay (Toolforge only); the per-mentor mail goes through the wiki API.
   Unit-tested by `test_notifications.py` — `python -m unittest test_notifications.py`.
-- `db.py` — SQLite store at `~/state/bot.db` (auto-created on first run; `_migrate` adds later
-  columns to pre-existing databases). Tables:
+- `db.py` — SQLite store at `~/state/bot.db`. Schema is managed by a small versioned migration
+  system: an ordered `MIGRATIONS` list (each entry a version + SQL script or callable) applied in
+  order and recorded in a `schema_migrations` table, so every migration runs exactly once.
+  `run_migrations()` is idempotent and is the single entry point — the deploy workflow runs it via
+  `migrate.py`. It is NOT run implicitly on `connect()`; the bot assumes migrations have already
+  been applied (they are, on every deploy). To evolve the schema, append a new `(version,
+  migration)` entry — never edit or renumber an applied one. Tables:
   `mentor_params` (last seen template params per mentor, plus the `page_url` of the page the
   template was found on), `mentee_membership` (per-mentor
   mentee roster with `first_seen` / `last_seen`), `digest_meta` (last sent digest timestamp).
@@ -305,6 +310,7 @@ Tool: `wikizeit-bot` (tool home at `/data/project/wikizeit-bot/`).
 become wikizeit-bot
 git clone git@github.com:WikiZEIT/bot.git
 cd bot && python3 -m venv venv && venv/bin/pip install -r requirements.txt pymysql
+venv/bin/python migrate.py   # create/upgrade the database schema (deploys re-run this)
 
 toolforge-jobs run wikizeit-hourly \
   --image python3.11 \
@@ -329,9 +335,10 @@ them.
    `python -m unittest test_parsing.py test_notifications.py`. `PYWIKIBOT_NO_USER_CONFIG=1` is set
    because `notifications.py` imports `pywikibot` at load time and CI has no `user-config.py`.
 2. **deploy** — `needs: test`, so it only runs when the tests pass, and only on `master`. It SSHes
-   into the Toolforge bastion and, as the tool account, pulls the latest code (`git pull --ff-only`)
-   and reinstalls dependencies (`$HOME/pvenv/bin/pip install -r requirements.txt`). A failing test
-   blocks the deploy entirely.
+   into the Toolforge bastion and, as the tool account, pulls the latest code (`git pull --ff-only`),
+   reinstalls dependencies (`$HOME/pvenv/bin/pip install -r requirements.txt`), and applies any
+   pending database migrations (`$HOME/pvenv/bin/python migrate.py`). A failing test blocks the
+   deploy entirely, and a failing migration fails the deploy loudly.
 
 Configure these repository secrets (Settings → Secrets and variables → Actions):
 

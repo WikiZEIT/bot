@@ -26,12 +26,25 @@ DB_DIR = os.path.expanduser('~/state')
 DB_PATH = os.path.join(DB_DIR, 'bot.db')
 
 
-SCHEMA = """
+SCHEMA_MIGRATIONS_DDL = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied TEXT NOT NULL
+);
+"""
+
+
+# --- Migrations ------------------------------------------------------------
+# Each migration has an integer version and runs exactly once, recorded in the
+# schema_migrations table. A migration is either an SQL script (str) or a
+# callable taking the open connection. To evolve the schema, APPEND a new
+# (version, migration) entry below — never edit or renumber an applied one.
+
+_MIGRATION_001_BASE = """
 CREATE TABLE IF NOT EXISTS mentor_params (
     mentor TEXT PRIMARY KEY,
     params_json TEXT,
-    updated TEXT,
-    page_url TEXT
+    updated TEXT
 );
 
 CREATE TABLE IF NOT EXISTS mentee_membership (
@@ -52,16 +65,62 @@ CREATE TABLE IF NOT EXISTS digest_meta (
 """
 
 
+def _migration_002_add_page_url(conn):
+    """Add mentor_params.page_url. Guarded with a PRAGMA check so it is safe on
+    databases where an earlier build added the column outside this system."""
+    cols = {row['name'] for row in conn.execute("PRAGMA table_info(mentor_params)")}
+    if 'page_url' not in cols:
+        conn.execute("ALTER TABLE mentor_params ADD COLUMN page_url TEXT")
+
+
+MIGRATIONS = [
+    (1, _MIGRATION_001_BASE),
+    (2, _migration_002_add_page_url),
+]
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
-def _migrate(conn):
-    """Bring an existing database up to the current schema. CREATE TABLE IF NOT
-    EXISTS leaves older tables untouched, so add columns introduced later."""
-    cols = {row['name'] for row in conn.execute("PRAGMA table_info(mentor_params)")}
-    if 'page_url' not in cols:
-        conn.execute("ALTER TABLE mentor_params ADD COLUMN page_url TEXT")
+def applied_versions(conn):
+    """Set of migration versions already recorded in the database."""
+    conn.executescript(SCHEMA_MIGRATIONS_DDL)
+    return {row['version'] for row in conn.execute("SELECT version FROM schema_migrations")}
+
+
+def migrate(conn):
+    """Apply pending migrations in version order, recording each in
+    schema_migrations. Returns the versions applied this call (empty if the
+    database was already up to date). Idempotent."""
+    applied = applied_versions(conn)
+    newly = []
+    for version, migration in sorted(MIGRATIONS, key=lambda m: m[0]):
+        if version in applied:
+            continue
+        if callable(migration):
+            migration(conn)
+        else:
+            conn.executescript(migration)
+        conn.execute(
+            "INSERT INTO schema_migrations (version, applied) VALUES (?, ?)",
+            (version, _now()),
+        )
+        newly.append(version)
+        print(f"[db] Zastosowano migrację {version}")
+    return newly
+
+
+def run_migrations():
+    """Apply any pending migrations and return the sorted list of all applied
+    versions. This is the single entry point for evolving the schema — the
+    deploy workflow (migrate.py) and tests call it. Safe to run repeatedly.
+
+    Migrations are NOT run implicitly on connect(); the bot assumes migrate.py
+    has already run (it does, on every deploy)."""
+    with connect() as conn:
+        migrate(conn)
+        return sorted(applied_versions(conn))
 
 
 @contextmanager
@@ -70,8 +129,6 @@ def connect():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
-        conn.executescript(SCHEMA)
-        _migrate(conn)
         yield conn
         conn.commit()
     except Exception:

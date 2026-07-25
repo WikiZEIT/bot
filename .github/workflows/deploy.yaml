@@ -51,9 +51,10 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          # Run both steps inside a single `become` so they execute as the tool
+          # Run every step inside a single `become` so they execute as the tool
           # account. $HOME is single-quoted here so it expands on the remote as
           # the tool's home (not the SSH user's) — the venv is at $HOME/pvenv.
+          # migrate.py applies any pending DB schema migrations after the pull.
           script: |
             set -e
-            become wikizeit-bot bash -lc 'set -e; cd ${{ secrets.SSH_PATH }} && git pull --ff-only && "$HOME/pvenv/bin/pip" install -r requirements.txt'
+            become wikizeit-bot bash -lc 'set -e; cd ${{ secrets.SSH_PATH }} && git pull --ff-only && "$HOME/pvenv/bin/pip" install -r requirements.txt && "$HOME/pvenv/bin/python" migrate.py'

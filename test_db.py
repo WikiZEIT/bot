@@ -30,16 +30,19 @@ class PageUrlTests(unittest.TestCase):
         shutil.rmtree(self.tmp)
 
     def test_store_and_read_round_trip(self):
+        db.run_migrations()
         url = 'https://pl.wikipedia.org/wiki/Pomoc:Przewodnicy/Podopieczni/Jcubic'
         db.update_mentor('jcubic', {'przewodnik': 'jcubic'}, ['Ann'], page_url=url)
         self.assertEqual(db.get_page_url('jcubic'), url)
 
     def test_unknown_mentor_returns_none(self):
+        db.run_migrations()
         self.assertIsNone(db.get_page_url('nobody'))
 
     def test_migration_adds_column_to_old_database(self):
-        # Build a database with the pre-page_url schema, as it exists in
-        # production, then let connect()'s _migrate bring it up to date.
+        # Build a database with the pre-page_url schema and NO schema_migrations
+        # table, as it exists in production, then let the migration runner bring
+        # it up to date without error.
         conn = sqlite3.connect(db.DB_PATH)
         conn.execute(
             "CREATE TABLE mentor_params "
@@ -52,11 +55,25 @@ class PageUrlTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
+        db.run_migrations()
         # No page_url yet for the legacy row — must not raise.
         self.assertIsNone(db.get_page_url('old'))
         # And the column is now writable.
         db.update_mentor('old', {}, [], page_url='https://x')
         self.assertEqual(db.get_page_url('old'), 'https://x')
+
+    def test_all_migrations_recorded(self):
+        db.run_migrations()
+        with db.connect() as conn:
+            recorded = db.applied_versions(conn)
+        self.assertEqual(recorded, {v for v, _ in db.MIGRATIONS})
+
+    def test_run_migrations_is_idempotent(self):
+        first = db.run_migrations()
+        second = db.run_migrations()
+        # Same final version set, and the second run raises nothing.
+        self.assertEqual(first, second)
+        self.assertEqual(first, sorted(v for v, _ in db.MIGRATIONS))
 
 
 if __name__ == '__main__':
